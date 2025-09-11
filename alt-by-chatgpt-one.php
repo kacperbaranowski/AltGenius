@@ -37,6 +37,9 @@ class ALT_By_ChatGPT_One {
         add_action('admin_enqueue_scripts', [ $this, 'enqueue_admin_assets' ]);
         add_action('wp_ajax_' . self::AJAX_ACTION, [ $this, 'ajax_generate_alt' ]);
         add_action('add_attachment', [ $this, 'maybe_fill_on_upload' ]);
+
+        // GitHub updater (optional; configure ALTGPT_GITHUB_REPO constant)
+        add_action('init', [ $this, 'init_github_updater' ]);
     }
 
     private function default_prompt(){
@@ -50,6 +53,8 @@ class ALT_By_ChatGPT_One {
             'prompt' => $this->default_prompt(),
             'auto_on_upload' => 0,
             'scan_limit' => 50,
+            'github_repo' => '',
+            'github_token' => '',
         ];
         return wp_parse_args(get_option(self::OPT_KEY, []), $defaults);
     }
@@ -77,6 +82,19 @@ class ALT_By_ChatGPT_One {
             printf('<label><input type="checkbox" name="%s[auto_on_upload]" value="1" %s> Włącz automatyczne generowanie ALT przy dodaniu pliku</label>',
                 esc_attr(self::OPT_KEY), checked(!empty($o['auto_on_upload']), true, false));
         },'altgpt-one','main');
+
+        // Sekcja aktualizacji (GitHub)
+        add_settings_section('updates','Aktualizacje (GitHub)','__return_false','altgpt-one');
+        add_settings_field('github_repo','Repozytorium (owner/repo)',function(){
+            $o=$this->get_options();
+            echo '<input type="text" name="'.self::OPT_KEY.'[github_repo]" value="'.esc_attr($o['github_repo']).'" class="regular-text" placeholder="owner/repo">';
+            echo '<p class="description">Np. hedea/alt-by-chatgpt-one-context. Zostaw puste, aby wyłączyć aktualizacje z GitHub.</p>';
+        },'altgpt-one','updates');
+        add_settings_field('github_token','Token (opcjonalnie)',function(){
+            $o=$this->get_options();
+            echo '<input type="password" name="'.self::OPT_KEY.'[github_token]" value="'.esc_attr($o['github_token']).'" class="regular-text" autocomplete="new-password">';
+            echo '<p class="description">Wymagany dla prywatnych repo. Przechowywany w opcjach WordPress.</p>';
+        },'altgpt-one','updates');
     }
 
     public function render_settings_page(){
@@ -191,6 +209,154 @@ class ALT_By_ChatGPT_One {
     public function maybe_fill_on_upload($id){
         $o=$this->get_options(); if(empty($o['auto_on_upload']))return;
         if(!get_post_meta($id,'_wp_attachment_image_alt',true)) $this->generate_and_update_alt($id);
+    }
+
+    /* =========================
+     *  GitHub Updater (optional)
+     * ========================= */
+    public function init_github_updater(){
+        $repo = $this->get_github_repo();
+        if(!$repo){ return; }
+        add_filter('pre_set_site_transient_update_plugins', [ $this, 'github_check_for_update' ]);
+        add_filter('plugins_api', [ $this, 'github_plugin_info' ], 10, 3);
+        add_filter('http_request_args', [ $this, 'github_http_headers' ], 10, 2);
+        add_filter('upgrader_source_selection', [ $this, 'github_rename_source_dir' ], 10, 4);
+    }
+
+    private function get_github_repo(){
+        // Priorytet: stała w wp-config → ustawienie wtyczki → filtr
+        if(defined('ALTGPT_GITHUB_REPO') && ALTGPT_GITHUB_REPO){ return ALTGPT_GITHUB_REPO; }
+        $o=$this->get_options(); if(!empty($o['github_repo'])) return $o['github_repo'];
+        return apply_filters('altgpt_github_repo', null);
+    }
+
+    private function get_github_token(){
+        // Priorytet: stała w wp-config → ustawienie wtyczki → filtr
+        if(defined('ALTGPT_GITHUB_TOKEN') && ALTGPT_GITHUB_TOKEN){ return ALTGPT_GITHUB_TOKEN; }
+        $o=$this->get_options(); if(!empty($o['github_token'])) return $o['github_token'];
+        return apply_filters('altgpt_github_token', null);
+    }
+
+    private function get_plugin_basename(){
+        return plugin_basename(__FILE__);
+    }
+
+    private function get_plugin_slug(){
+        $basename = $this->get_plugin_basename();
+        $dir = dirname($basename);
+        return ($dir && $dir !== '.') ? $dir : basename($basename, '.php');
+    }
+
+    private function get_plugin_version(){
+        $headers = get_file_data(__FILE__, [ 'Version' => 'Version' ]);
+        return isset($headers['Version']) ? $headers['Version'] : '0.0.0';
+    }
+
+    public function github_http_headers($args, $url){
+        if(strpos($url,'github.com')===false && strpos($url,'api.github.com')===false){ return $args; }
+        $args['headers'] = isset($args['headers']) && is_array($args['headers']) ? $args['headers'] : [];
+        $args['headers']['User-Agent'] = 'WordPress/'.get_bloginfo('version').'; '.home_url();
+        $args['headers']['Accept'] = 'application/vnd.github+json';
+        $token = $this->get_github_token();
+        if($token){
+            $args['headers']['Authorization'] = 'Bearer '.$token;
+        }
+        return $args;
+    }
+
+    private function github_fetch_latest_release($repo){
+        $api = 'https://api.github.com/repos/'.$repo.'/releases/latest';
+        $r = wp_remote_get($api, [ 'timeout' => 20 ]);
+        if(is_wp_error($r)) return $r;
+        $code = wp_remote_retrieve_response_code($r);
+        if($code !== 200){ return new WP_Error('github_http_'.$code, 'GitHub HTTP '.$code); }
+        $b = json_decode(wp_remote_retrieve_body($r), true);
+        if(!is_array($b)) return new WP_Error('github_bad_json','Nieprawidlowy JSON z GitHub');
+        return $b;
+    }
+
+    private function github_pick_download_url($release){
+        // Prefer release asset .zip if available
+        if(!empty($release['assets']) && is_array($release['assets'])){
+            foreach($release['assets'] as $asset){
+                if(!empty($asset['browser_download_url']) && preg_match('/\.zip$/i',$asset['browser_download_url'])){
+                    return $asset['browser_download_url'];
+                }
+            }
+        }
+        // Fallback to auto-generated zipball (may change folder name)
+        if(!empty($release['zipball_url'])) return $release['zipball_url'];
+        return null;
+    }
+
+    public function github_rename_source_dir($source, $remote_source, $upgrader, $hook_extra){
+        if(empty($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->get_plugin_basename()){
+            return $source;
+        }
+        // Ensure extracted folder name matches the installed plugin folder
+        $slug = $this->get_plugin_slug();
+        $parent = trailingslashit(dirname(rtrim($source,'/\\')));
+        $desired = $parent . $slug . '/';
+        if(rtrim($source,'/\\') === rtrim($desired,'/\\')){
+            return $source; // already matching
+        }
+        // Try to rename extracted dir
+        if(@rename($source, $desired)){
+            return $desired;
+        }
+        return $source;
+    }
+
+    public function github_check_for_update($transient){
+        if(empty($transient) || empty($transient->checked)){ return $transient; }
+        $repo = $this->get_github_repo(); if(!$repo){ return $transient; }
+
+        $plugin = $this->get_plugin_basename();
+        $current = $this->get_plugin_version();
+        $release = $this->github_fetch_latest_release($repo);
+        if(is_wp_error($release)){ return $transient; }
+
+        $tag = !empty($release['tag_name']) ? $release['tag_name'] : (!empty($release['name']) ? $release['name'] : '');
+        $remote_version = ltrim((string)$tag, 'vV');
+        if(!$remote_version || version_compare($remote_version, $current, '<=')){
+            return $transient;
+        }
+
+        $download = $this->github_pick_download_url($release);
+        if(!$download){ return $transient; }
+
+        $update = new stdClass();
+        $update->slug = $this->get_plugin_slug();
+        $update->plugin = $plugin;
+        $update->new_version = $remote_version;
+        $update->url = 'https://github.com/'.$repo;
+        $update->package = $download;
+        $transient->response[$plugin] = $update;
+        return $transient;
+    }
+
+    public function github_plugin_info($result, $action, $args){
+        if($action !== 'plugin_information'){ return $result; }
+        if(empty($args->slug) || $args->slug !== $this->get_plugin_slug()){ return $result; }
+        $repo = $this->get_github_repo(); if(!$repo){ return $result; }
+        $release = $this->github_fetch_latest_release($repo);
+        if(is_wp_error($release)){ return $result; }
+        $tag = !empty($release['tag_name']) ? $release['tag_name'] : (!empty($release['name']) ? $release['name'] : '');
+        $remote_version = ltrim((string)$tag, 'vV');
+        $download = $this->github_pick_download_url($release);
+
+        $info = new stdClass();
+        $info->name = 'AI ALT Generator by Hedea';
+        $info->slug = $this->get_plugin_slug();
+        $info->version = $remote_version ?: $this->get_plugin_version();
+        $info->author = 'Hedea - Kacper Baranowski';
+        $info->homepage = 'https://github.com/'.$repo;
+        $info->sections = [
+            'description' => !empty($release['body']) ? $release['body'] : 'Aktualizacje z GitHub Releases.',
+            'changelog'   => !empty($release['body']) ? $release['body'] : ''
+        ];
+        if($download){ $info->download_link = $download; }
+        return $info;
     }
 }
 new ALT_By_ChatGPT_One();
