@@ -2,11 +2,16 @@
 /**
  * Plugin Name: AI ALT Generator by Hedea
  * Description: Generowanie ALT dla obrazów w Mediach z ChatGPT. Przyciski, ustawienia (API key, model, prompt), akcje masowe, kontekst produktu/wpisu/strony.
- * Version: 0.0.3
+ * Version: 0.0.4
  * Author: Hedea - Kacper Baranowski
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
+
+// Wbudowane (opcjonalne) domyślne ustawienia aktualizacji z GitHub.
+// Uzupełnij przed dystrybucją, aby nie konfigurować na każdym WP.
+if(!defined('ALTGPT_GITHUB_REPO'))  define('ALTGPT_GITHUB_REPO', 'Hedea-pl/wp-alt-generator');
+if(!defined('ALTGPT_GITHUB_TOKEN')) define('ALTGPT_GITHUB_TOKEN', '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');
 
 class ALT_By_ChatGPT_One {
     const OPT_KEY = 'altgpt_one_options';
@@ -253,14 +258,31 @@ class ALT_By_ChatGPT_One {
     }
 
     public function github_http_headers($args, $url){
-        if(strpos($url,'github.com')===false && strpos($url,'api.github.com')===false){ return $args; }
+        // Apply only to GitHub domains (API, web, and codeload)
+        $is_github = (strpos($url,'github.com') !== false) || (strpos($url,'api.github.com') !== false) || (strpos($url,'codeload.github.com') !== false);
+        if(!$is_github){ return $args; }
+
         $args['headers'] = isset($args['headers']) && is_array($args['headers']) ? $args['headers'] : [];
         $args['headers']['User-Agent'] = 'WordPress/'.get_bloginfo('version').'; '.home_url();
-        $args['headers']['Accept'] = 'application/vnd.github+json';
+
         $token = $this->get_github_token();
         if($token){
+            // Fine-grained tokens require Authorization header (query param auth is not supported)
             $args['headers']['Authorization'] = 'Bearer '.$token;
         }
+
+        // Accept header depends on the endpoint:
+        // - JSON for API requests
+        // - application/octet-stream for release asset download via API
+        // - leave unset for web/codeload binary downloads
+        if(strpos($url,'api.github.com') !== false){
+            if(strpos($url,'/releases/assets/') !== false){
+                $args['headers']['Accept'] = 'application/octet-stream';
+            } else {
+                $args['headers']['Accept'] = 'application/vnd.github+json';
+            }
+        }
+
         return $args;
     }
 
@@ -276,11 +298,21 @@ class ALT_By_ChatGPT_One {
     }
 
     private function github_pick_download_url($release){
-        // Prefer release asset .zip if available
+        // Prefer release asset .zip when available
+        // For private repos, use the API asset URL (requires Authorization header and Accept: application/octet-stream)
         if(!empty($release['assets']) && is_array($release['assets'])){
+            $has_token = (bool) $this->get_github_token();
             foreach($release['assets'] as $asset){
-                if(!empty($asset['browser_download_url']) && preg_match('/\.zip$/i',$asset['browser_download_url'])){
-                    return $asset['browser_download_url'];
+                $browser = !empty($asset['browser_download_url']) ? $asset['browser_download_url'] : '';
+                $api     = !empty($asset['url']) ? $asset['url'] : '';
+                $is_zip  = $browser && preg_match('/\.zip$/i', $browser);
+                if($is_zip){
+                    // If we have a token, prefer API asset URL which works for private repos
+                    if($has_token && $api){
+                        return $api; // e.g., https://api.github.com/repos/{owner}/{repo}/releases/assets/{id}
+                    }
+                    // Otherwise fall back to the public browser URL (works for public repos)
+                    return $browser;
                 }
             }
         }
