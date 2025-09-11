@@ -14,6 +14,8 @@ class ALT_By_ChatGPT_One {
     const AJAX_ACTION = 'altgpt_one_generate';
     const API_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
+    private $last_request_debug = null;
+
     private $allowed_models = [
         'gpt-4o-mini' => 'gpt-4o-mini',
         'gpt-4o' => 'gpt-4o',
@@ -101,8 +103,8 @@ class ALT_By_ChatGPT_One {
     public function ajax_generate_alt(){
         check_ajax_referer(self::NONCE_ACTION,'_nonce');
         $id=intval($_POST['attachment_id']); $res=$this->generate_and_update_alt($id);
-        if(is_wp_error($res)) wp_send_json_error(['message'=>$res->get_error_message()]);
-        wp_send_json_success(['alt'=>$res]);
+        if(is_wp_error($res)) wp_send_json_error(['message'=>$res->get_error_message(),'request'=>$this->last_request_debug]);
+        wp_send_json_success(['alt'=>$res,'request'=>$this->last_request_debug]);
     }
 
     private function generate_and_update_alt($id){
@@ -118,10 +120,48 @@ class ALT_By_ChatGPT_One {
         $parent=get_post_field('post_parent',$id);
         if($parent){ $prompt.=' Kontekst: '.get_the_title($parent); }
         $payload=['model'=>$o['model'],'messages'=>[[ 'role'=>'user','content'=>[ ['type'=>'text','text'=>$prompt], ['type'=>'image_url','image_url'=>['url'=>$url]] ] ]]];
-        $r=wp_remote_post(self::API_ENDPOINT,['headers'=>['Authorization'=>'Bearer '.$o['api_key'],'Content-Type'=>'application/json'],'body'=>json_encode($payload)]);
+        $headers = [
+            'Authorization' => 'Bearer '.$o['api_key'],
+            'Content-Type'  => 'application/json'
+        ];
+        // Debug: zapamiętaj szczegóły zapytania (API key zamaskowany)
+        $this->last_request_debug = [
+            'endpoint' => self::API_ENDPOINT,
+            'headers'  => [
+                'Authorization' => 'Bearer '.( $o['api_key'] ? substr($o['api_key'],0,3).'...' : '' ),
+                'Content-Type'  => 'application/json'
+            ],
+            'payload'  => $payload
+        ];
+        $r=wp_remote_post(self::API_ENDPOINT,[
+            'headers'=>$headers,
+            'body'=>json_encode($payload),
+            'timeout' => 30
+        ]);
         if(is_wp_error($r)) return $r;
-        $b=json_decode(wp_remote_retrieve_body($r),true);
-        return $b['choices'][0]['message']['content']??'ALT';
+        $status = wp_remote_retrieve_response_code($r);
+        $body   = wp_remote_retrieve_body($r);
+        $this->last_request_debug['response'] = [
+            'status' => $status,
+            'body_preview' => substr((string)$body,0,2000)
+        ];
+        $b=json_decode($body,true);
+        if(!is_array($b)) return new WP_Error('bad_json','OpenAI zwróciło nieprawidłową odpowiedź');
+        if(isset($b['error'])){
+            $msg = is_array($b['error']) ? ($b['error']['message'] ?? 'Błąd OpenAI') : (string)$b['error'];
+            return new WP_Error('openai_error',$msg);
+        }
+        if(empty($b['choices']) || empty($b['choices'][0]['message']['content'])){
+            return new WP_Error('no_content','Brak treści w odpowiedzi OpenAI');
+        }
+        $content = $b['choices'][0]['message']['content'];
+        if(is_array($content)){
+            $parts = [];
+            foreach($content as $part){ if(is_array($part) && isset($part['text'])) $parts[] = $part['text']; }
+            $content = trim(implode(' ', $parts));
+        }
+        $alt = trim((string)$content);
+        return $alt !== '' ? $alt : new WP_Error('empty_alt','Pusta treść ALT');
     }
 
     public function register_bulk_actions($a){
