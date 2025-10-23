@@ -2,8 +2,8 @@
 /**
  * Plugin Name: AI ALT Generator by Hedea
  * Description: Generowanie ALT dla obrazów w Mediach z ChatGPT. Przyciski, ustawienia (API key, model, prompt), akcje masowe, kontekst produktu/wpisu/strony.
- * Version: 0.0.4
- * Author: Hedea - Kacper Baranowski
+ * Version: 1.0.0
+ * Author: Hedea
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -137,55 +137,85 @@ class ALT_By_ChatGPT_One {
     }
 
     private function ask_openai_for_alt($url,$id){
-        $o=$this->get_options(); if(!$o['api_key']) return new WP_Error('no_key','Brak API key');
-        $prompt=str_replace('{{image_url}}',$url,$o['prompt']);
-        // Dodanie kontekstu – np. post_parent
-        $parent=get_post_field('post_parent',$id);
-        if($parent){ $prompt.=' Kontekst: '.get_the_title($parent); }
-        $payload=['model'=>$o['model'],'messages'=>[[ 'role'=>'user','content'=>[ ['type'=>'text','text'=>$prompt], ['type'=>'image_url','image_url'=>['url'=>$url]] ] ]]];
-        $headers = [
-            'Authorization' => 'Bearer '.$o['api_key'],
-            'Content-Type'  => 'application/json'
-        ];
-        // Debug: zapamiętaj szczegóły zapytania (API key zamaskowany)
-        $this->last_request_debug = [
-            'endpoint' => self::API_ENDPOINT,
-            'headers'  => [
-                'Authorization' => 'Bearer '.( $o['api_key'] ? substr($o['api_key'],0,3).'...' : '' ),
-                'Content-Type'  => 'application/json'
-            ],
-            'payload'  => $payload
-        ];
-        $r=wp_remote_post(self::API_ENDPOINT,[
-            'headers'=>$headers,
-            'body'=>json_encode($payload),
-            'timeout' => 30
-        ]);
-        if(is_wp_error($r)) return $r;
-        $status = wp_remote_retrieve_response_code($r);
-        $body   = wp_remote_retrieve_body($r);
-        $this->last_request_debug['response'] = [
-            'status' => $status,
-            'body_preview' => substr((string)$body,0,2000)
-        ];
-        $b=json_decode($body,true);
-        if(!is_array($b)) return new WP_Error('bad_json','OpenAI zwróciło nieprawidłową odpowiedź');
-        if(isset($b['error'])){
-            $msg = is_array($b['error']) ? ($b['error']['message'] ?? 'Błąd OpenAI') : (string)$b['error'];
-            return new WP_Error('openai_error',$msg);
-        }
-        if(empty($b['choices']) || empty($b['choices'][0]['message']['content'])){
-            return new WP_Error('no_content','Brak treści w odpowiedzi OpenAI');
-        }
-        $content = $b['choices'][0]['message']['content'];
-        if(is_array($content)){
-            $parts = [];
-            foreach($content as $part){ if(is_array($part) && isset($part['text'])) $parts[] = $part['text']; }
-            $content = trim(implode(' ', $parts));
-        }
-        $alt = trim((string)$content);
-        return $alt !== '' ? $alt : new WP_Error('empty_alt','Pusta treść ALT');
+    $o=$this->get_options(); 
+    if(!$o['api_key']) return new WP_Error('no_key','Brak API key');
+    
+    $prompt=str_replace('{{image_url}}',$url,$o['prompt']);
+    
+    // Dodanie kontekstu – np. post_parent
+    $parent=get_post_field('post_parent',$id);
+    if($parent){ 
+        $prompt.=' Kontekst: '.get_the_title($parent); 
     }
+    
+    // NAPRAWIONE: Pobierz obrazek lokalnie i konwertuj na base64
+    $image_path = get_attached_file($id);
+    if(!$image_path || !file_exists($image_path)){
+        return new WP_Error('no_file','Nie można znaleźć pliku obrazka');
+    }
+    
+    // Sprawdź typ MIME i konwertuj na base64
+    $image_data = file_get_contents($image_path);
+    if($image_data === false){
+        return new WP_Error('read_error','Nie można odczytać pliku obrazka');
+    }
+    
+    $mime_type = get_post_mime_type($id);
+    if(!$mime_type){
+        $mime_type = 'image/jpeg'; // domyślny
+    }
+    
+    $base64 = base64_encode($image_data);
+    $data_url = "data:{$mime_type};base64,{$base64}";
+    
+    // Użyj base64 zamiast URL
+    $payload=[
+        'model'=>$o['model'],
+        'messages'=>[[ 
+            'role'=>'user',
+            'content'=>[ 
+                ['type'=>'text','text'=>$prompt], 
+                ['type'=>'image_url','image_url'=>['url'=>$data_url]]
+            ] 
+        ]]
+    ];
+    
+    $headers = [
+        'Authorization' => 'Bearer '.$o['api_key'],
+        'Content-Type'  => 'application/json'
+    ];
+    
+    // Debug: zapamiętaj szczegóły zapytania (API key zamaskowany)
+    $this->last_request_debug = [
+        'endpoint' => self::API_ENDPOINT,
+        'headers'  => [
+            'Authorization' => 'Bearer '.( $o['api_key'] ? substr($o['api_key'],0,3).'...' : '' ),
+            'Content-Type'  => 'application/json'
+        ],
+        'payload'  => $payload,
+        'image_size' => strlen($base64) . ' bytes (base64)'
+    ];
+    
+    $r=wp_remote_post(self::API_ENDPOINT,[
+        'headers'=>$headers,
+        'body'=>json_encode($payload),
+        'timeout'=>60
+    ]);
+    
+    if(is_wp_error($r)) return $r;
+    $code=wp_remote_retrieve_response_code($r);
+    if($code!==200){
+        $body=wp_remote_retrieve_body($r);
+        return new WP_Error('openai_error','OpenAI error '.$code.': '.$body);
+    }
+    
+    $resp=json_decode(wp_remote_retrieve_body($r),true);
+    if(!isset($resp['choices'][0]['message']['content'])){
+        return new WP_Error('no_content','Brak odpowiedzi z OpenAI');
+    }
+    
+    return trim($resp['choices'][0]['message']['content']);
+}
 
     public function register_bulk_actions($a){
         $a['altgpt_sel']='Generuj ALT dla zaznaczonych'; $a['altgpt_miss']='Generuj ALT dla brakujących'; return $a;
