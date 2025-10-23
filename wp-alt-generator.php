@@ -7,9 +7,6 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
-
-// Wbudowane (opcjonalne) domyślne ustawienia aktualizacji z GitHub.
-// Uzupełnij przed dystrybucją, aby nie konfigurować na każdym WP.
 if(!defined('ALTGPT_GITHUB_REPO'))  define('ALTGPT_GITHUB_REPO', 'Hedea-pl/wp-alt-generator');
 if(!defined('ALTGPT_GITHUB_TOKEN')) define('ALTGPT_GITHUB_TOKEN', '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');
 
@@ -35,15 +32,12 @@ class ALT_By_ChatGPT_One {
         add_filter('manage_upload_columns', [ $this, 'add_alt_column' ]);
         add_action('manage_media_custom_column', [ $this, 'render_alt_column' ], 10, 2);
         add_filter('bulk_actions-upload', [ $this, 'register_bulk_actions' ]);
-        // Usuń akcję masową "dla brakujących" z listy (zostaw tylko zaznaczone)
         add_filter('bulk_actions-upload', [ $this, 'remove_bulk_missing_action' ], 999);
         add_filter('handle_bulk_actions-upload', [ $this, 'handle_bulk_actions' ], 10, 3);
         add_action('admin_notices', [ $this, 'bulk_admin_notice' ]);
         add_action('admin_enqueue_scripts', [ $this, 'enqueue_admin_assets' ]);
         add_action('wp_ajax_' . self::AJAX_ACTION, [ $this, 'ajax_generate_alt' ]);
         add_action('add_attachment', [ $this, 'maybe_fill_on_upload' ]);
-
-        // GitHub updater (optional; configure ALTGPT_GITHUB_REPO constant)
         add_action('init', [ $this, 'init_github_updater' ]);
     }
 
@@ -87,8 +81,6 @@ class ALT_By_ChatGPT_One {
             printf('<label><input type="checkbox" name="%s[auto_on_upload]" value="1" %s> Włącz automatyczne generowanie ALT przy dodaniu pliku</label>',
                 esc_attr(self::OPT_KEY), checked(!empty($o['auto_on_upload']), true, false));
         },'altgpt-one','main');
-
-        // Sekcja aktualizacji (GitHub)
         add_settings_section('updates','Aktualizacje (GitHub)','__return_false','altgpt-one');
         add_settings_field('github_repo','Repozytorium (owner/repo)',function(){
             $o=$this->get_options();
@@ -142,19 +134,16 @@ class ALT_By_ChatGPT_One {
     
     $prompt=str_replace('{{image_url}}',$url,$o['prompt']);
     
-    // Dodanie kontekstu – np. post_parent
     $parent=get_post_field('post_parent',$id);
     if($parent){ 
         $prompt.=' Kontekst: '.get_the_title($parent); 
     }
     
-    // NAPRAWIONE: Pobierz obrazek lokalnie i konwertuj na base64
     $image_path = get_attached_file($id);
     if(!$image_path || !file_exists($image_path)){
         return new WP_Error('no_file','Nie można znaleźć pliku obrazka');
     }
     
-    // Sprawdź typ MIME i konwertuj na base64
     $image_data = file_get_contents($image_path);
     if($image_data === false){
         return new WP_Error('read_error','Nie można odczytać pliku obrazka');
@@ -162,13 +151,12 @@ class ALT_By_ChatGPT_One {
     
     $mime_type = get_post_mime_type($id);
     if(!$mime_type){
-        $mime_type = 'image/jpeg'; // domyślny
+        $mime_type = 'image/jpeg';
     }
     
     $base64 = base64_encode($image_data);
     $data_url = "data:{$mime_type};base64,{$base64}";
     
-    // Użyj base64 zamiast URL
     $payload=[
         'model'=>$o['model'],
         'messages'=>[[ 
@@ -185,7 +173,6 @@ class ALT_By_ChatGPT_One {
         'Content-Type'  => 'application/json'
     ];
     
-    // Debug: zapamiętaj szczegóły zapytania (API key zamaskowany)
     $this->last_request_debug = [
         'endpoint' => self::API_ENDPOINT,
         'headers'  => [
@@ -224,7 +211,6 @@ class ALT_By_ChatGPT_One {
         $ok=0;$err=0;
         if($act=='altgpt_sel'){
             foreach($ids as $id){
-                // Pomiń załączniki, które już mają ALT
                 if(get_post_meta($id,'_wp_attachment_image_alt',true)){
                     continue;
                 }
@@ -246,9 +232,6 @@ class ALT_By_ChatGPT_One {
         if(!get_post_meta($id,'_wp_attachment_image_alt',true)) $this->generate_and_update_alt($id);
     }
 
-    /* =========================
-     *  GitHub Updater (optional)
-     * ========================= */
     public function init_github_updater(){
         $repo = $this->get_github_repo();
         if(!$repo){ return; }
@@ -259,14 +242,12 @@ class ALT_By_ChatGPT_One {
     }
 
     private function get_github_repo(){
-        // Priorytet: stała w wp-config → ustawienie wtyczki → filtr
         if(defined('ALTGPT_GITHUB_REPO') && ALTGPT_GITHUB_REPO){ return ALTGPT_GITHUB_REPO; }
         $o=$this->get_options(); if(!empty($o['github_repo'])) return $o['github_repo'];
         return apply_filters('altgpt_github_repo', null);
     }
 
     private function get_github_token(){
-        // Priorytet: stała w wp-config → ustawienie wtyczki → filtr
         if(defined('ALTGPT_GITHUB_TOKEN') && ALTGPT_GITHUB_TOKEN){ return ALTGPT_GITHUB_TOKEN; }
         $o=$this->get_options(); if(!empty($o['github_token'])) return $o['github_token'];
         return apply_filters('altgpt_github_token', null);
@@ -288,7 +269,6 @@ class ALT_By_ChatGPT_One {
     }
 
     public function github_http_headers($args, $url){
-        // Apply only to GitHub domains (API, web, and codeload)
         $is_github = (strpos($url,'github.com') !== false) || (strpos($url,'api.github.com') !== false) || (strpos($url,'codeload.github.com') !== false);
         if(!$is_github){ return $args; }
 
@@ -297,14 +277,9 @@ class ALT_By_ChatGPT_One {
 
         $token = $this->get_github_token();
         if($token){
-            // Fine-grained tokens require Authorization header (query param auth is not supported)
             $args['headers']['Authorization'] = 'Bearer '.$token;
         }
 
-        // Accept header depends on the endpoint:
-        // - JSON for API requests
-        // - application/octet-stream for release asset download via API
-        // - leave unset for web/codeload binary downloads
         if(strpos($url,'api.github.com') !== false){
             if(strpos($url,'/releases/assets/') !== false){
                 $args['headers']['Accept'] = 'application/octet-stream';
@@ -328,8 +303,6 @@ class ALT_By_ChatGPT_One {
     }
 
     private function github_pick_download_url($release){
-        // Prefer release asset .zip when available
-        // For private repos, use the API asset URL (requires Authorization header and Accept: application/octet-stream)
         if(!empty($release['assets']) && is_array($release['assets'])){
             $has_token = (bool) $this->get_github_token();
             foreach($release['assets'] as $asset){
@@ -337,16 +310,13 @@ class ALT_By_ChatGPT_One {
                 $api     = !empty($asset['url']) ? $asset['url'] : '';
                 $is_zip  = $browser && preg_match('/\.zip$/i', $browser);
                 if($is_zip){
-                    // If we have a token, prefer API asset URL which works for private repos
                     if($has_token && $api){
                         return $api; // e.g., https://api.github.com/repos/{owner}/{repo}/releases/assets/{id}
                     }
-                    // Otherwise fall back to the public browser URL (works for public repos)
                     return $browser;
                 }
             }
         }
-        // Fallback to auto-generated zipball (may change folder name)
         if(!empty($release['zipball_url'])) return $release['zipball_url'];
         return null;
     }
@@ -355,14 +325,12 @@ class ALT_By_ChatGPT_One {
         if(empty($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->get_plugin_basename()){
             return $source;
         }
-        // Ensure extracted folder name matches the installed plugin folder
         $slug = $this->get_plugin_slug();
         $parent = trailingslashit(dirname(rtrim($source,'/\\')));
         $desired = $parent . $slug . '/';
         if(rtrim($source,'/\\') === rtrim($desired,'/\\')){
             return $source; // already matching
         }
-        // Try to rename extracted dir
         if(@rename($source, $desired)){
             return $desired;
         }
