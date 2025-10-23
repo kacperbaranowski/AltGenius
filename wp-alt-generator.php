@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AI ALT Generator by Hedea
  * Description: Generowanie ALT dla obrazów w Mediach z ChatGPT. Przyciski, ustawienia (API key, model, prompt), akcje masowe, kontekst produktu/wpisu/strony.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Hedea
  */
 
