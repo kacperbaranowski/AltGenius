@@ -19,10 +19,16 @@ class ALT_By_ChatGPT_One {
     private $last_request_debug = null;
 
     private $allowed_models = [
-        'gpt-4o-mini' => 'gpt-4o-mini',
-        'gpt-4o' => 'gpt-4o',
-        'gpt-4.1-mini' => 'gpt-4.1-mini',
+        'gpt-5.1' => 'gpt-5.1',
+        'gpt-5-mini' => 'gpt-5-mini',
+        'gpt-5-nano' => 'gpt-5-nano',
         'gpt-4.1' => 'gpt-4.1',
+        'gpt-4.1-mini' => 'gpt-4.1-mini',
+        'gpt-4.1-nano' => 'gpt-4.1-nano',
+        'gpt-4o' => 'gpt-4o',
+        'gpt-4o-mini' => 'gpt-4o-mini',
+        'gpt-4o-realtime-preview' => 'gpt-4o-realtime-preview',
+        'o3' => 'o3',
         'o4-mini' => 'o4-mini'
     ];
 
