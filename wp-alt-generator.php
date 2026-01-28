@@ -1,14 +1,20 @@
 <?php
 /**
- * Plugin Name: AI ALT Generator by Hedea
- * Description: Generowanie ALT dla obrazów w Mediach z ChatGPT. Przyciski, ustawienia (API key, model, prompt), akcje masowe, kontekst produktu/wpisu/strony.
- * Version: 1.0.1
+ * Plugin Name: AltGenius
+ * Plugin URI: https://github.com/kacperbaranowski
+ * Description: Automatyczne generowanie tekstów ALT dla obrazów w Bibliotece Mediów z użyciem AI (ChatGPT). Obsługa akcji masowych, kontekstu wpisu/strony/produktu oraz pełne ustawienia (API key, model, prompt).
+ * Version: 1.0.5
  * Author: Hedea
+ * Author URI: https://github.com/kacperbaranowski
+ * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: altgenius
+ * Domain Path: /languages
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
-if(!defined('ALTGPT_GITHUB_REPO'))  define('ALTGPT_GITHUB_REPO', 'Hedea-pl/wp-alt-generator');
-if(!defined('ALTGPT_GITHUB_TOKEN')) define('ALTGPT_GITHUB_TOKEN', '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');
+if(!defined('ALTGPT_GITHUB_REPO'))  define('ALTGPT_GITHUB_REPO', 'kacperbaranowski/AltGenius');
+// Token nie jest potrzebny dla publicznego repo
 
 class ALT_By_ChatGPT_One {
     const OPT_KEY = 'altgpt_one_options';
@@ -69,9 +75,7 @@ class ALT_By_ChatGPT_One {
             'model' => 'gpt-4o-mini',
             'prompt' => $this->default_prompt(),
             'auto_on_upload' => 0,
-            'scan_limit' => 50,
-            'github_repo' => '',
-            'github_token' => '',
+            'scan_limit' => 50
         ];
         return wp_parse_args(get_option(self::OPT_KEY, []), $defaults);
     }
@@ -127,18 +131,8 @@ class ALT_By_ChatGPT_One {
             printf('<label><input type="checkbox" name="%s[auto_on_upload]" value="1" %s> Włącz automatyczne generowanie ALT przy dodaniu pliku</label>',
                 esc_attr(self::OPT_KEY), checked(!empty($o['auto_on_upload']), true, false));
         },'altgpt-one','main');
-        add_settings_section('updates','Aktualizacje (GitHub)','__return_false','altgpt-one');
-        add_settings_field('github_repo','Repozytorium (owner/repo)',function(){
-            $o=$this->get_options();
-            echo '<input type="text" name="'.self::OPT_KEY.'[github_repo]" value="'.esc_attr($o['github_repo']).'" class="regular-text" placeholder="owner/repo">';
-            echo '<p class="description">Np. hedea/alt-by-chatgpt-one-context. Zostaw puste, aby wyłączyć aktualizacje z GitHub.</p>';
-        },'altgpt-one','updates');
-        add_settings_field('github_token','Token (opcjonalnie)',function(){
-            $o=$this->get_options();
-            echo '<input type="password" name="'.self::OPT_KEY.'[github_token]" value="'.esc_attr($o['github_token']).'" class="regular-text" autocomplete="new-password">';
-            echo '<p class="description">Wymagany dla prywatnych repo. Przechowywany w opcjach WordPress.</p>';
-        },'altgpt-one','updates');
     }
+
 
     public function render_settings_page(){
         echo '<div class="wrap"><h1>ALT by ChatGPT</h1><form method="post" action="options.php">';
@@ -419,23 +413,35 @@ class ALT_By_ChatGPT_One {
     }
     
     private function get_images_without_alt($limit = -1){
+        global $wpdb;
+        
+        // Zapytanie SQL bezpośrednio do bazy
+        $sql = "
+            SELECT DISTINCT p.ID 
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wp_attachment_image_alt'
+            WHERE p.post_type = 'attachment' 
+            AND p.post_mime_type LIKE 'image/%'
+            AND (pm.meta_value IS NULL OR pm.meta_value = '')
+            ORDER BY p.ID DESC
+        ";
+        
+        if($limit > 0){
+            $sql .= " LIMIT " . intval($limit);
+        }
+        
+        $ids = $wpdb->get_col($sql);
+        
+        if(empty($ids)){
+            return [];
+        }
+        
+        // Pobierz pełne obiekty postów
         $args = [
             'post_type' => 'attachment',
-            'post_mime_type' => 'image',
-            'post_status' => 'inherit',
-            'posts_per_page' => $limit,
-            'meta_query' => [
-                'relation' => 'OR',
-                [
-                    'key' => '_wp_attachment_image_alt',
-                    'compare' => 'NOT EXISTS'
-                ],
-                [
-                    'key' => '_wp_attachment_image_alt',
-                    'value' => '',
-                    'compare' => '='
-                ]
-            ]
+            'post__in' => $ids,
+            'posts_per_page' => -1,
+            'orderby' => 'post__in'
         ];
         
         $query = new WP_Query($args);
@@ -610,13 +616,11 @@ class ALT_By_ChatGPT_One {
 
     private function get_github_repo(){
         if(defined('ALTGPT_GITHUB_REPO') && ALTGPT_GITHUB_REPO){ return ALTGPT_GITHUB_REPO; }
-        $o=$this->get_options(); if(!empty($o['github_repo'])) return $o['github_repo'];
         return apply_filters('altgpt_github_repo', null);
     }
 
     private function get_github_token(){
         if(defined('ALTGPT_GITHUB_TOKEN') && ALTGPT_GITHUB_TOKEN){ return ALTGPT_GITHUB_TOKEN; }
-        $o=$this->get_options(); if(!empty($o['github_token'])) return $o['github_token'];
         return apply_filters('altgpt_github_token', null);
     }
 
