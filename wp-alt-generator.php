@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: AltGenius
- * Plugin URI: https://github.com/kacperbaranowski
+ * Plugin URI: https://github.com/kacperbaranowski/AltGenius
  * Description: Automatyczne generowanie tekstów ALT dla obrazów w Bibliotece Mediów z użyciem AI (ChatGPT). Obsługa akcji masowych, kontekstu wpisu/strony/produktu oraz pełne ustawienia (API key, model, prompt).
  * Version: 1.0.0
  * Author: Kacper Baranowski
