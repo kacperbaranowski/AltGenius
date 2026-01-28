@@ -193,6 +193,8 @@ wp-alt-generator/
 │   ├── altgpt.js           # JS dla biblioteki mediów
 │   ├── stats.js            # JS dla panelu statystyk
 │   └── stats.css           # Style dla panelu statystyk
+├── logs/
+│   └── alt-scan-log.txt    # Plik logów (tworzony automatycznie)
 └── README.md
 ```
 
