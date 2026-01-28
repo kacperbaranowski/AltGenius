@@ -1,6 +1,6 @@
 # AltGenius - AI-Powered ALT Text Generator for WordPress
 
-![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-GPL--2.0%2B-orange.svg)
 
@@ -105,7 +105,7 @@ git clone https://github.com/kacperbaranowski/AltGenius.git wp-alt-generator
 ### Generowanie ALT dla pojedynczego obrazu
 
 1. Przejdź do **Media → Biblioteka**
-2. Znajdź obraz bez ALT (kolumna "ALT (ChatGPT)" pokazuje "brak")
+2. Znajdź obraz bez ALT
 3. Kliknij przycisk **Generuj ALT**
 4. Poczekaj na wygenerowanie (status pojawi się obok przycisku)
 
@@ -191,17 +191,14 @@ wp-alt-generator/
 ├── wp-alt-generator.php    # Główny plik wtyczki
 ├── assets/
 │   ├── altgpt.js           # JS dla biblioteki mediów
-│   ├── stats.js            # JS dla panelu statystyk (legacy)
-│   └── stats.css           # Style dla panelu (legacy)
-├── logs/
-│   └── alt-scan-log.txt    # Plik logów (tworzony automatycznie)
+│   ├── stats.js            # JS dla panelu statystyk
+│   └── stats.css           # Style dla panelu statystyk
 └── README.md
 ```
 
 ## 🔐 Bezpieczeństwo
 
 - **API Key:** Przechowywany bezpiecznie w bazie danych WordPress
-- **Logi chronione:** Folder `logs/` bez pliku `.htaccess` (do rozważenia)
 - **Nonce verification:** Wszystkie akcje AJAX zabezpieczone
 - **Capability checks:** Tylko administratorzy mają dostęp (`manage_options`)
 
@@ -268,27 +265,6 @@ Sprawdź aktualne ceny na [OpenAI Pricing](https://openai.com/api/pricing/).
 - **Issues:** [GitHub Issues](https://github.com/kacperbaranowski/AltGenius/issues)
 - **Autor:** Kacper Baranowski
 - **GitHub:** [@kacperbaranowski](https://github.com/kacperbaranowski)
-
-## 📝 Changelog
-
-### v1.0.5 (2026-01-28)
-
-- ✨ Dodano panel statystyk KPI
-- ✨ Dodano cron co 5 minut (288×/dzień, ~8,640 zapytań/dzień)
-- ✨ Dodano **Gutenberg Sync** - dwukierunkowa synchronizacja ALT
-- ✨ Dostosowano do OpenAI Tier 1 (limit 30 obrazków/batch)
-- 🔧 Hardcoded GitHub repo: `kacperbaranowski/AltGenius`
-- 🔧 Uproszczono UI - tylko statystyki + status crona
-- 🐛 Naprawiono pobieranie obrazków bez ALT (SQL query)
-- 📝 Zmieniono nazwę z "AI ALT Generator by Hedea" na "AltGenius"
-
-### v1.0.1
-
-- ✨ Pierwsza publiczna wersja
-- ⚡ Vision API (base64 image upload)
-- 🎨 Wsparcie dla wielu modeli GPT
-- 📦 Akcje masowe w bibliotece mediów
-- 🔄 Automatyczne aktualizacje z GitHub
 
 ## 📄 Licencja
 
