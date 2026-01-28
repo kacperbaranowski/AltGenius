@@ -750,7 +750,7 @@ class ALT_By_ChatGPT_One {
         $info->name = 'AI ALT Generator by Hedea';
         $info->slug = $this->get_plugin_slug();
         $info->version = $remote_version ?: $this->get_plugin_version();
-        $info->author = 'Hedea - Kacper Baranowski';
+        $info->author = 'Kacper Baranowski';
         $info->homepage = 'https://github.com/'.$repo;
         $info->sections = [
             'description' => !empty($release['body']) ? $release['body'] : 'Aktualizacje z GitHub Releases.',

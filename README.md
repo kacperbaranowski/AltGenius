@@ -252,7 +252,7 @@ Sprawdź aktualne ceny na [OpenAI Pricing](https://openai.com/api/pricing/).
 ## 🤝 Wsparcie i Zgłaszanie Błędów
 
 - **Issues:** [GitHub Issues](https://github.com/kacperbaranowski/AltGenius/issues)
-- **Autor:** Hedea - Kacper Baranowski
+- **Autor:** Kacper Baranowski
 - **Email:** [kontakt przez GitHub]
 
 ## 📝 Changelog
