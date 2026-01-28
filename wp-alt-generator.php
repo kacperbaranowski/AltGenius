@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/kacperbaranowski
  * Description: Automatyczne generowanie tekstów ALT dla obrazów w Bibliotece Mediów z użyciem AI (ChatGPT). Obsługa akcji masowych, kontekstu wpisu/strony/produktu oraz pełne ustawienia (API key, model, prompt).
  * Version: 1.0.5
- * Author: Hedea
+ * Author: Kacper Baranowski
  * Author URI: https://github.com/kacperbaranowski
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -61,6 +61,9 @@ class ALT_By_ChatGPT_One {
         
         // Cron job
         add_action('altgpt_cron_scan', [ $this, 'cron_scan_and_generate' ]);
+        // Dodaj custom cron interval (5 minut)
+        add_filter('cron_schedules', [ $this, 'add_cron_interval' ]);
+        
         register_activation_hook(__FILE__, [ $this, 'activate_cron' ]);
         register_deactivation_hook(__FILE__, [ $this, 'deactivate_cron' ]);
     }
@@ -75,7 +78,7 @@ class ALT_By_ChatGPT_One {
             'model' => 'gpt-4o-mini',
             'prompt' => $this->default_prompt(),
             'auto_on_upload' => 0,
-            'scan_limit' => 50
+            'scan_limit' => 30
         ];
         return wp_parse_args(get_option(self::OPT_KEY, []), $defaults);
     }
@@ -135,7 +138,7 @@ class ALT_By_ChatGPT_One {
 
 
     public function render_settings_page(){
-        echo '<div class="wrap"><h1>ALT by ChatGPT</h1><form method="post" action="options.php">';
+        echo '<div class="wrap"><h1>AltGenius - Ustawienia</h1><form method="post" action="options.php">';
         settings_fields('altgpt-one'); do_settings_sections('altgpt-one'); submit_button();
         echo '</form></div>';
     }
@@ -144,14 +147,17 @@ class ALT_By_ChatGPT_One {
         if(!current_user_can('manage_options')) return;
         
         $stats = $this->get_images_stats();
-        $missing_images = $this->get_images_without_alt(20);
-        $logs = $this->get_recent_logs(100);
+        
+        // Sprawdź status crona
+        $next_cron = wp_next_scheduled('altgpt_cron_scan');
+        $cron_status = $next_cron ? 'Aktywny' : 'Nieaktywny';
+        $cron_next = $next_cron ? date('Y-m-d H:i:s', $next_cron) : 'Brak';
         
         ?>
         <div class="wrap">
-            <h1>Statystyki ALT i Logi</h1>
+            <h1>AltGenius - Statystyki</h1>
             
-            <!-- Statystyki -->
+            <!-- KPI Cards -->
             <div class="altgpt-stats-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
                 <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #2271b1;">
                     <h3 style="margin: 0 0 10px;">Wszystkie obrazy</h3>
@@ -171,67 +177,16 @@ class ALT_By_ChatGPT_One {
                 </div>
             </div>
             
-            <!-- Przyciski akcji -->
-            <div style="margin: 20px 0;">
-                <button class="button button-primary altgpt-scan-now">🔍 Skanuj teraz</button>
-                <button class="button altgpt-generate-all" <?php echo $stats['without_alt'] == 0 ? 'disabled' : ''; ?>>
-                    ⚡ Generuj dla wszystkich bez ALT (<?php echo $stats['without_alt']; ?>)
-                </button>
-                <span class="altgpt-action-status" style="margin-left: 10px; font-weight: bold;"></span>
-            </div>
-            
-            <!-- Lista obrazków bez ALT -->
-            <?php if(!empty($missing_images)): ?>
+            <!-- Status Crona -->
             <div class="card" style="background: #fff; padding: 20px; margin: 20px 0;">
-                <h2>Obrazki bez ALT (pierwsze 20)</h2>
-                <table class="wp-list-table widefat fixed striped">
-                    <thead>
-                        <tr>
-                            <th style="width: 80px;">Miniatura</th>
-                            <th>Nazwa pliku</th>
-                            <th>Data dodania</th>
-                            <th style="width: 150px;">Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($missing_images as $img): 
-                            $thumb = wp_get_attachment_image_src($img->ID, 'thumbnail');
-                        ?>
-                        <tr>
-                            <td>
-                                <?php if($thumb): ?>
-                                    <img src="<?php echo esc_url($thumb[0]); ?>" style="width: 60px; height: 60px; object-fit: cover;">
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <strong><?php echo esc_html(basename(get_attached_file($img->ID))); ?></strong><br>
-                                <small>ID: <?php echo $img->ID; ?></small>
-                            </td>
-                            <td><?php echo get_the_date('Y-m-d H:i', $img->ID); ?></td>
-                            <td>
-                                <a href="<?php echo admin_url('post.php?post='.$img->ID.'&action=edit'); ?>" class="button button-small">Edytuj</a>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php else: ?>
-            <div class="notice notice-success"><p>🎉 Wszystkie obrazy mają ALT!</p></div>
-            <?php endif; ?>
-            
-            <!-- Logi -->
-            <div class="card" style="background: #fff; padding: 20px; margin: 20px 0;">
-                <h2>Ostatnie logi (100 wpisów)</h2>
-                <button class="button altgpt-clear-logs">🗑️ Wyczyść logi</button>
-                <button class="button altgpt-refresh-logs">🔄 Odśwież</button>
-                <div class="altgpt-logs" style="background: #f6f7f7; padding: 15px; margin-top: 10px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">
-                    <?php if(!empty($logs)): ?>
-                        <?php echo nl2br(esc_html($logs)); ?>
-                    <?php else: ?>
-                        <em>Brak logów</em>
-                    <?php endif; ?>
-                </div>
+                <h2>Automatyczne Generowanie (CRON)</h2>
+                <p><strong>Status:</strong> <span style="color: <?php echo $next_cron ? '#00a32a' : '#d63638'; ?>;"><?php echo $cron_status; ?></span></p>
+                <?php if($next_cron): ?>
+                    <p><strong>Następne uruchomienie:</strong> <?php echo $cron_next; ?></p>
+                    <p style="color: #666; font-size: 14px;"><em>Cron uruchamia się co 5 minut (288×/dzień) i przetwarza 30 obrazków = ~8,640 zapytań/dzień (OpenAI Tier 1: 10k/dzień).</em></p>
+                <?php else: ?>
+                    <p style="color: #d63638;">⚠️ Cron nie jest zaplanowany. Aktywuj ponownie wtyczkę.</p>
+                <?php endif; ?>
             </div>
         </div>
         <?php
@@ -432,6 +387,9 @@ class ALT_By_ChatGPT_One {
         
         $ids = $wpdb->get_col($sql);
         
+        // Debug log
+        $this->log_to_file("get_images_without_alt: znaleziono " . count($ids) . " ID-ków (limit: $limit)", 'INFO');
+        
         if(empty($ids)){
             return [];
         }
@@ -439,12 +397,17 @@ class ALT_By_ChatGPT_One {
         // Pobierz pełne obiekty postów
         $args = [
             'post_type' => 'attachment',
+            'post_status' => 'inherit',
             'post__in' => $ids,
             'posts_per_page' => -1,
             'orderby' => 'post__in'
         ];
         
         $query = new WP_Query($args);
+        
+        // Debug log
+        $this->log_to_file("WP_Query zwróciło " . count($query->posts) . " postów", 'INFO');
+        
         return $query->posts;
     }
     
@@ -526,8 +489,12 @@ class ALT_By_ChatGPT_One {
     public function ajax_generate_all(){
         check_ajax_referer('altgpt-stats-nonce', 'nonce');
         
+        $this->log_to_file("=== AJAX GENERATE_ALL START ===", 'INFO');
+        
         $limit = 10; // Generuj max 10 na jedno wywołanie AJAX
         $images = $this->get_images_without_alt($limit);
+        
+        $this->log_to_file("Rozpoczynam przetwarzanie " . count($images) . " obrazków", 'INFO');
         
         $ok = 0;
         $err = 0;
@@ -545,7 +512,11 @@ class ALT_By_ChatGPT_One {
             }
         }
         
+        $this->log_to_file("Pętla zakończona. OK: $ok, Błędy: $err", 'INFO');
+        
         $stats = $this->get_images_stats();
+        
+        $this->log_to_file("=== AJAX GENERATE_ALL END === Zwracam: processed=" . count($images) . ", remaining=" . $stats['without_alt'], 'INFO');
         
         wp_send_json_success([
             'processed' => count($images),
@@ -553,16 +524,26 @@ class ALT_By_ChatGPT_One {
             'err' => $err,
             'remaining' => $stats['without_alt'],
             'stats' => $stats
-        ]);
+        ])
+;
     }
     
     // === CRON ===
     
+    // Custom cron interval - 5 minut
+    public function add_cron_interval($schedules){
+        $schedules['every_5_minutes'] = [
+            'interval' => 300, // 5 minut w sekundach
+            'display' => __('Co 5 minut')
+        ];
+        return $schedules;
+    }
+    
     public function activate_cron(){
         if(!wp_next_scheduled('altgpt_cron_scan')){
-            wp_schedule_event(time(), 'daily', 'altgpt_cron_scan');
+            wp_schedule_event(time(), 'every_5_minutes', 'altgpt_cron_scan');
         }
-        $this->log_to_file('Cron aktywowany', 'INFO');
+        $this->log_to_file('Cron aktywowany (co 5 minut)', 'INFO');
     }
     
     public function deactivate_cron(){
