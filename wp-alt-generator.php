@@ -742,3 +742,174 @@ class ALT_By_ChatGPT_One {
     }
 }
 new ALT_By_ChatGPT_One();
+
+// ========================================
+// WP ALT ⇄ GUTENBERG SYNC
+// Dwukierunkowa synchronizacja ALT między biblioteką mediów a blokami Gutenberg
+// ========================================
+
+if (!class_exists('WP_Alt_Gutenberg_Sync')) {
+    class WP_Alt_Gutenberg_Sync {
+        private static $from_media_guard = false;
+
+        public static function init() {
+            add_action('updated_post_meta', [__CLASS__, 'on_updated_post_meta'], 10, 4);
+            add_action('added_post_meta', [__CLASS__, 'on_added_post_meta'], 10, 4);
+            add_action('save_post', [__CLASS__, 'on_save_post'], 10, 3);
+        }
+
+        public static function on_added_post_meta($meta_id, $post_id, $meta_key, $meta_value) {
+            self::maybe_sync_from_media($post_id, $meta_key, $meta_value);
+        }
+
+        public static function on_updated_post_meta($meta_id, $post_id, $meta_key, $meta_value) {
+            self::maybe_sync_from_media($post_id, $meta_key, $meta_value);
+        }
+
+        private static function maybe_sync_from_media($post_id, $meta_key, $new_value) {
+            if ($meta_key !== '_wp_attachment_image_alt') {
+                return;
+            }
+            $attachment = get_post($post_id);
+            if (!$attachment || $attachment->post_type !== 'attachment') {
+                return;
+            }
+            $attachment_id = (int)$post_id;
+            $new_alt = is_string($new_value) ? $new_value : '';
+
+            self::$from_media_guard = true;
+            self::sync_alt_to_posts($attachment_id, $new_alt);
+            self::$from_media_guard = false;
+        }
+
+        public static function on_save_post($post_id, $post, $update) {
+            if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+            if (wp_is_post_revision($post_id)) return;
+            if (self::$from_media_guard) return;
+
+            $allowed_types = self::get_allowed_post_types();
+            if (!in_array($post->post_type, $allowed_types, true)) return;
+
+            $content = $post->post_content;
+            if (!is_string($content) || $content === '') return;
+
+            self::sync_post_alts_to_media($content);
+        }
+
+        private static function sync_post_alts_to_media($content) {
+            // wp:image block attributes
+            if (preg_match_all('/<!--\s*wp:image\s*(\{.*?\})\s*-->/s', $content, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $m) {
+                    $attrs = json_decode($m[1], true);
+                    if (json_last_error() !== JSON_ERROR_NONE || !is_array($attrs)) continue;
+                    if (!isset($attrs['id'])) continue;
+                    $id = (int)$attrs['id'];
+                    $alt = '';
+                    if (isset($attrs['alt']) && is_string($attrs['alt'])) {
+                        $alt = $attrs['alt'];
+                    } else {
+                        $alt = self::guess_img_alt_for_attachment($content, $id);
+                    }
+                    if ($id > 0 && $alt !== '') {
+                        $current = get_post_meta($id, '_wp_attachment_image_alt', true);
+                        if ($current !== $alt) update_post_meta($id, '_wp_attachment_image_alt', $alt);
+                    }
+                }
+            }
+
+            // <img class="wp-image-ID" alt="...">
+            if (preg_match_all('/<img\b[^>]*class="[^"]*\bwp-image-(\d+)\b[^"]*"[^>]*>/i', $content, $imgMatches)) {
+                foreach ($imgMatches[0] as $i => $imgTag) {
+                    $id = (int)$imgMatches[1][$i];
+                    $alt = self::extract_alt_from_img_tag($imgTag);
+                    if ($id > 0 && $alt !== '') {
+                        $current = get_post_meta($id, '_wp_attachment_image_alt', true);
+                        if ($current !== $alt) update_post_meta($id, '_wp_attachment_image_alt', $alt);
+                    }
+                }
+            }
+        }
+
+        private static function get_allowed_post_types() {
+            $core_excluded = ['attachment','revision','nav_menu_item','custom_css','customize_changeset','oembed_cache','user_request','wp_template','wp_template_part','wp_navigation'];
+            $detected = get_post_types(['show_ui' => true], 'objects');
+            if (!is_array($detected)) $detected = [];
+            foreach ($core_excluded as $ex) { if (isset($detected[$ex])) unset($detected[$ex]); }
+            foreach (['post','page','wp_block'] as $ensure) { $obj = get_post_type_object($ensure); if ($obj) { $detected[$ensure] = $obj; } }
+            $types = array_keys($detected);
+            $types = apply_filters('wpags_allowed_post_types', $types);
+            $types = array_values(array_filter($types, function ($t) { return $t !== 'attachment'; }));
+            return $types;
+        }
+
+        private static function sync_alt_to_posts($attachment_id, $new_alt) {
+            global $wpdb;
+            $like_class = '%wp-image-' . (int)$attachment_id . '%';
+            $like_block = '%<!-- wp:image %"id":' . (int)$attachment_id . '%';
+            $post_types = self::get_allowed_post_types();
+            if (empty($post_types)) return;
+
+            $placeholders = implode(', ', array_fill(0, count($post_types), '%s'));
+            $sql = "SELECT ID, post_content FROM {$wpdb->posts} WHERE post_status IN ('publish','draft','pending','private','future') AND post_type IN ($placeholders) AND (post_content LIKE %s OR post_content LIKE %s)";
+            $params = array_merge($post_types, [$like_class, $like_block]);
+            $rows = $wpdb->get_results($wpdb->prepare($sql, $params));
+            if (empty($rows)) return;
+
+            foreach ($rows as $row) {
+                $updated = self::replace_alt_in_content($row->post_content, $attachment_id, $new_alt);
+                if ($updated !== $row->post_content) {
+                    wp_update_post(['ID' => (int)$row->ID, 'post_content' => $updated]);
+                }
+            }
+        }
+
+        private static function replace_alt_in_content($content, $attachment_id, $new_alt) {
+            $updated = $content;
+            $updated = preg_replace_callback(
+                '/<!--\s*wp:image\s*(\{.*?\})\s*-->/s',
+                function ($m) use ($attachment_id, $new_alt) {
+                    $attrs = json_decode($m[1], true);
+                    if (json_last_error() !== JSON_ERROR_NONE || !is_array($attrs)) return $m[0];
+                    if (!isset($attrs['id']) || (int)$attrs['id'] !== (int)$attachment_id) return $m[0];
+                    $attrs['alt'] = (string)$new_alt;
+                    $new_json = wp_json_encode($attrs);
+                    return str_replace($m[1], $new_json, $m[0]);
+                },
+                $updated
+            );
+
+            $img_pattern = '/<img\b[^>]*class="([^"]*)\bwp-image-' . (int)$attachment_id . '\b([^"]*)"[^>]*>/i';
+            $updated = preg_replace_callback(
+                $img_pattern,
+                function ($m) use ($new_alt) {
+                    $img_tag = $m[0];
+                    if (preg_match('/\balt="[^"]*"/i', $img_tag)) {
+                        $img_tag = preg_replace('/\balt="[^"]*"/i', 'alt="' . esc_attr($new_alt) . '"', $img_tag);
+                    } else {
+                        $img_tag = preg_replace('/>$/', ' alt="' . esc_attr($new_alt) . '">', $img_tag);
+                    }
+                    return $img_tag;
+                },
+                $updated
+            );
+            return $updated;
+        }
+
+        private static function extract_alt_from_img_tag($imgTag) {
+            if (preg_match('/\balt="([^"]*)"/i', $imgTag, $m)) {
+                return html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5);
+            }
+            return '';
+        }
+
+        private static function guess_img_alt_for_attachment($content, $attachment_id) {
+            $pattern = '/<img\b[^>]*class="[^"]*\bwp-image-' . (int)$attachment_id . '\b[^"]*"[^>]*\balt="([^"]*)"[^>]*>/i';
+            if (preg_match($pattern, $content, $m)) {
+                return html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5);
+            }
+            return '';
+        }
+    }
+}
+
+WP_Alt_Gutenberg_Sync::init();

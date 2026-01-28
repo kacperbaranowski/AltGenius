@@ -4,48 +4,52 @@
 ![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-GPL--2.0%2B-orange.svg)
 
-**AltGenius** to zaawansowana wtyczka WordPress, która automatycznie generuje teksty alternatywne (ALT) dla obrazów w mediach za pomocą sztucznej inteligencji OpenAI (ChatGPT). Wtyczka znacząco poprawia dostępność strony oraz SEO poprzez inteligentne opisywanie obrazów.
+**AltGenius** to zaawansowana wtyczka WordPress do automatycznego generowania tekstów alternatywnych (ALT) dla obrazów za pomocą sztucznej inteligencji OpenAI. Wtyczka znacząco poprawia dostępność strony oraz SEO poprzez inteligentne opisywanie obrazów.
 
 ## 🚀 Główne Funkcje
 
 ### 🤖 Automatyczne Generowanie ALT
 
-- **Generowanie z AI:** Wykorzystuje modele GPT do tworzenia dokładnych, kontekstowych opisów obrazów
-- **Wsparcie dla wielu modeli:** gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4o, o3, o4-mini i więcej
-- **Kontekst treści:** Automatyczne uwzględnianie kontekstu wpisu/strony produktu
+- **Generowanie z AI:** Wykorzystuje modele GPT (gpt-4o-mini, gpt-4.1, o3, o4-mini) do tworzenia dokładnych, kontekstowych opisów obrazów
 - **Vision API:** Bezpośrednia analiza obrazu (base64) zamiast URL
+- \*\*Kontekst tre
 
-### 📊 Panel Statystyk i Logów
+ści:\*\* Automatyczne uwzględnianie kontekstu wpisu/strony/produktu
+
+### ⚡ Automatyzacja (CRON)
+
+- **Częstotliwość:** Co 5 minut (288×/dzień) - działa w tle automatycznie
+- **Limit:** 30 obrazków na uruchomienie
+- **Wydajność:** ~8,640 zapytań/dzień (bezpieczne dla OpenAI Tier 1: 10,000/dzień)
+- **Szczegółowe logowanie** wszystkich operacji do `logs/alt-scan-log.txt`
+
+### 🔄 Gutenberg Sync
+
+- **Dwukierunkowa synchronizacja ALT** między Biblioteką Mediów a blokami obrazów Gutenberg
+- **Automatyczna aktualizacja:** Zmiana ALT w bibliotece → aktualizacja we wszystkich postach
+- **Odwrotna synchronizacja:** Edycja ALT w Gutenberg → zapis do biblioteki
+- **Wsparcie dla bloków:** `wp:image` oraz klasycznych `<img wp-image-*>`
+
+### 📊 Panel Statystyk
 
 - **Dedykowane menu top-level** w WordPress
-- **Statystyki w czasie rzeczywistym:**
+- **KPI w czasie rzeczywistym:**
   - Wszystkie obrazy w bibliotece
   - Obrazy z ALT
   - Obrazy bez ALT
   - Procent pokrycia
-- **Lista obrazków bez ALT** z miniaturami i szybkim edytowaniem
-- **System logowania** do pliku `logs/alt-scan-log.txt`
-- **Podgląd logów** z ostatnich 100 operacji
+- **Status Crona:** Czy aktywny, kiedy następne uruchomienie
 
-### ⚡ Akcje Masowe
+### ⚙️ Akcje Masowe
 
-- **Generuj dla zaznaczonych** - przetwarzanie wybranych obrazów
-- **Generuj dla wszystkich bez ALT** - automatyczne przetwarzanie wszystkich brakujących
-- **Progress tracking** - monitorowanie postępu w czasie rzeczywistym
-- **Batch processing** - przetwarzanie po 10 obrazów na iterację (optymalizacja API)
-
-### ⏰ Automatyzacja (Cron)
-
-- **Cron job** uruchamiany codziennie
-- **Automatyczne skanowanie** i generowanie ALT dla nowych obrazów
-- **Konfigurowalne limity** (domyślnie 50 obrazów na iterację)
-- **Szczegółowe logowanie** wszystkich operacji
+- **Generuj dla zaznaczonych** - przetwarzanie wybranych obrazów w bibliotece mediów
+- **Przycisk w bibliotece** - pojedynczy przycisk "Generuj ALT" dla każdego obrazu
 
 ### 🔄 Automatyczne Aktualizacje
 
-- **Integracja z GitHub Releases** - automatyczne pobieranie aktualizacji
-- **Bezpieczne aktualizacje** - zachowanie ustawień i logów
-- **Wersjonowanie** - zgodne z semantic versioning
+- **Integracja z GitHub Releases** - automatyczne pobieranie aktualizacji z `kacperbaranowski/AltGenius`
+- **Publiczne repo** - brak potrzeby tokena
+- **Bezpieczne aktualizacje** - zachowanie ustawień
 
 ## 📦 Instalacja
 
@@ -55,7 +59,7 @@
 2. Przejdź do **Wtyczki → Dodaj nową → Wyślij wtyczkę na serwer**
 3. Wybierz pobrany plik ZIP
 4. Kliknij **Instaluj teraz**
-5. Aktywuj wtyczkę
+5. **Aktywuj** wtyczkę
 
 ### Metoda 2: Manualna instalacja
 
@@ -67,7 +71,7 @@
 
 ```bash
 cd wp-content/plugins/
-git clone https://github.com/kacperbaranowski/AltGenius.git
+git clone https://github.com/kacperbaranowski/AltGenius.git wp-alt-generator
 ```
 
 ## ⚙️ Konfiguracja
@@ -81,7 +85,7 @@ git clone https://github.com/kacperbaranowski/AltGenius.git
 
 ### 2. Konfiguracja wtyczki
 
-1. W WordPress przejdź do **ALT Generator → Ustawienia**
+1. W WordPress przejdź do **AltGenius → Ustawienia**
 2. Wklej **API Key** w odpowiednie pole
 3. Wybierz **Model** (zalecany: `gpt-4o-mini` dla najlepszego stosunku ceny do jakości)
 4. (Opcjonalnie) Dostosuj **Prompt** do swoich potrzeb
@@ -89,6 +93,14 @@ git clone https://github.com/kacperbaranowski/AltGenius.git
 6. Kliknij **Zapisz zmiany**
 
 ## 📖 Użycie
+
+### Panel Statystyk
+
+1. Przejdź do **AltGenius → Statystyki**
+2. Zobacz:
+   - **Card-y KPI:** Wszystkie obrazy, Z ALT, Bez ALT, Pokrycie %
+   - **Status Crona:** Czy aktywny, kiedy następne uruchomienie (co 5 minut)
+   - Info: Cron przetwarza ~8,640 obrazków/dzień
 
 ### Generowanie ALT dla pojedynczego obrazu
 
@@ -99,42 +111,21 @@ git clone https://github.com/kacperbaranowski/AltGenius.git
 
 ### Masowe generowanie ALT
 
-#### Dla zaznaczonych obrazów:
-
 1. Przejdź do **Media → Biblioteka**
 2. Zaznacz obrazy (checkbox obok miniatur)
 3. Z menu **Akcje masowe** wybierz **Generuj ALT dla zaznaczonych**
 4. Kliknij **Zastosuj**
 
-#### Dla wszystkich bez ALT (Panel statystyk):
+### Automatyczne Generowanie (CRON)
 
-1. Przejdź do **ALT Generator → Statystyki i Logi**
-2. Sprawdź kartę "Bez ALT" - ile obrazów wymaga przetworzenia
-3. Kliknij przycisk **⚡ Generuj dla wszystkich bez ALT**
-4. Potwierdź w oknie dialogowym
-5. Obserwuj postęp w czasie rzeczywistym
+Cron działa automatycznie co 5 minut i:
 
-### Przeglądanie statystyk i logów
+- Skanuje bibliotekę mediów pod kątem obrazków bez ALT
+- Przetwarza 30 obrazków na jednym uruchomieniu
+- Loguje wszystkie operacje do `logs/alt-scan-log.txt`
+- **Nie wymaga żadnej interwencji** - działa w tle 24/7
 
-1. Przejdź do **ALT Generator → Statystyki i Logi**
-2. Sprawdź:
-   - **Card-y ze statystykami:** Wszystkie obrazy, Z ALT, Bez ALT, Pokrycie %
-   - **Listę obrazków bez ALT:** Pierwsze 20 z miniaturami
-   - **Logi:** Ostatnie 100 operacji
-3. Użyj przycisków:
-   - **🔍 Skanuj teraz** - odświeża statystyki
-   - **🔄 Odśwież** - przeładowuje logi
-   - **🗑️ Wyczyść logi** - usuwa wszystkie logi
-
-### Testowanie Crona
-
-Aby ręcznie uruchomić cron job (wymaga WP-CLI):
-
-```bash
-wp cron event run altgpt_cron_scan
-```
-
-Lub użyj pluginu [WP Crontrol](https://wordpress.org/plugins/wp-crontrol/) do testowania.
+**Status Crona:** Sprawdź w **AltGenius → Statystyki**
 
 ## 🎨 Dostosowywanie
 
@@ -146,7 +137,7 @@ Domyślny prompt:
 Opisz to zdjęcie jednym zdaniem po polsku do ALT. URL: {{image_url}}
 ```
 
-Możesz go dostosować w **ALT Generator → Ustawienia → Prompt**. Użyj `{{image_url}}` jako placeholdera.
+Możesz go dostosować w **AltGenius → Ustawienia → Prompt**. Użyj `{{image_url}}` jako placeholdera.
 
 Przykłady:
 
@@ -158,30 +149,40 @@ Stwórz krótki, opisowy alt text dla tego obrazu: {{image_url}}
 Wygeneruj alt text zgodny z WCAG 2.1 dla: {{image_url}}
 ```
 
-### Zmiana częstotliwości Crona
+### Zmiana częstotliwości Crona (zaawansowane)
 
-W pliku wtyczki znajdź (linia ~557):
+Domyślnie: co 5 minut. Aby zmienić, edytuj w pliku wtyczki (linia ~537):
 
 ```php
-wp_schedule_event(time(), 'daily', 'altgpt_cron_scan');
+$schedules['every_5_minutes'] = [
+    'interval' => 300, // 300 sekund = 5 minut
+    'display' => __('Co 5 minut')
+];
 ```
 
-Zmień `'daily'` na:
+Przykładowe wartości:
 
-- `'hourly'` - co godzinę
-- `'twicedaily'` - dwa razy dziennie
-- `'daily'` - raz dziennie
-- `'weekly'` - raz w tygodniu
+- `60` - co minutę (nie zalecane - rate limits!)
+- `300` - co 5 minut (domyślne, zalecane dla Tier 1)
+- `600` - co 10 minut
+- `1800` - co 30 minut
+
+**⚠️ Uwaga:** Po zmianie musisz dezaktywować i aktywować wtyczkę!
 
 ### Zmiana limitu przetwarzania
 
-W ustawieniach wtyczki (linia ~72):
+Domyślnie: 30 obrazków/batch (optymalne dla OpenAI Tier 1).
+
+Edytuj w ustawieniach domyślnych (linia ~78):
 
 ```php
-'scan_limit' => 50
+'scan_limit' => 30
 ```
 
-Zwiększ lub zmniejsz wartość według potrzeb (uwaga na koszty API!).
+**⚠️ Uwaga:**
+
+- Tier 1 (10,000 RPD): max ~35 przy 5-minutowym interwale
+- Tier 2+ (50,000 RPD): możesz zwiększyć do 100-150
 
 ## 🗂️ Struktura Plików
 
@@ -190,10 +191,9 @@ wp-alt-generator/
 ├── wp-alt-generator.php    # Główny plik wtyczki
 ├── assets/
 │   ├── altgpt.js           # JS dla biblioteki mediów
-│   ├── stats.js            # JS dla panelu statystyk
-│   └── stats.css           # Style dla panelu statystyk
+│   ├── stats.js            # JS dla panelu statystyk (legacy)
+│   └── stats.css           # Style dla panelu (legacy)
 ├── logs/
-│   ├── .htaccess           # Ochrona katalogu
 │   └── alt-scan-log.txt    # Plik logów (tworzony automatycznie)
 └── README.md
 ```
@@ -201,19 +201,26 @@ wp-alt-generator/
 ## 🔐 Bezpieczeństwo
 
 - **API Key:** Przechowywany bezpiecznie w bazie danych WordPress
-- **Logi chronione:** Folder `logs/` zabezpieczony przez `.htaccess`
+- **Logi chronione:** Folder `logs/` bez pliku `.htaccess` (do rozważenia)
 - **Nonce verification:** Wszystkie akcje AJAX zabezpieczone
-- **Capability checks:** Tylko administratorzy mają dostęp
+- **Capability checks:** Tylko administratorzy mają dostęp (`manage_options`)
 
 ## 💰 Koszty API OpenAI
 
 Wtyczka używa **Vision API** (analiza obrazu), co ma wpływ na koszty:
 
-### Przykładowe koszty (gpt-4o-mini):
+### OpenAI Tier 1 (10,000 RPD)
 
-- **Koszt za obraz:** ~$0.001 - $0.003 (zależy od rozmiaru)
+- **Koszt za obraz:** ~$0.001 - $0.003 (model: gpt-4o-mini)
+- **Dzienna wydajność:** ~8,640 obrazków (z ustawieniami domyślnymi)
+- **Dzienny koszt:** ~$8.64 - $25.92
+- **Miesięczny koszt:** ~$259 - $777
+
+### Przykłady (gpt-4o-mini):
+
 - **100 obrazów:** ~$0.10 - $0.30
-- **1000 obrazów:** ~$1.00 - $3.00
+- **1,000 obrazów:** ~$1.00 - $3.00
+- **10,000 obrazów:** ~$10.00 - $30.00
 
 💡 **Wskazówka:** Użyj `gpt-4o-mini` dla najniższych kosztów z zachowaniem dobrej jakości!
 
@@ -223,7 +230,7 @@ Sprawdź aktualne ceny na [OpenAI Pricing](https://openai.com/api/pricing/).
 
 ### "Brak API key"
 
-- Upewnij się, że API key jest poprawnie wklejony w ustawieniach
+- Upewnij się, że API key jest poprawnie wklejony w **AltGenius → Ustawienia**
 - Sprawdź czy nie ma dodatkowych spacji
 
 ### "OpenAI error 401"
@@ -231,40 +238,49 @@ Sprawdź aktualne ceny na [OpenAI Pricing](https://openai.com/api/pricing/).
 - API key jest nieprawidłowy lub wygasł
 - Wygeneruj nowy klucz na platform.openai.com
 
-### "OpenAI error 429"
+### "OpenAI error 429" (Rate Limit)
 
 - Przekroczono limit zapytań API
-- Poczekaj chwilę lub zwiększ plan na OpenAI
-- Zmniejsz limit przetwarzania w opcjach
+- **Tier 1:** Zmniejsz limit do 20-25 obrazków lub zwiększ interwał do 10 minut
+- **Rozwiązanie:** Upgrade do Tier 2+ na OpenAI
 
 ### Cron nie działa
 
-- Sprawdź czy WordPress Cron jest aktywny (`wp cron event list`)
-- Użyj WP Crontrol do debugowania
-- Sprawdź logi w **ALT Generator → Statystyki i Logi**
+- **Sprawdź status:** **AltGenius → Statystyki** → sekcja "Automatyczne Generowanie"
+- **Zresetuj cron:** Dezaktywuj i aktywuj wtyczkę ponownie
+- **WordPress Cron:** Sprawdź czy nie jest wyłączony (`DISABLE_WP_CRON`)
+- **Logi:** Sprawdź `logs/alt-scan-log.txt` pod kątem błędów
 
-### "processed: 0" przy generowaniu masowym
+### Gutenberg Sync nie działa
 
-- Sprawdź czy obrazy rzeczywiście nie mają ALT
-- Zobacz logi - mogą zawierać błędy API
-- Zweryfikuj permissions w bazie danych
+- **Weryfikacja:** Edytuj post w Gutenberg i zmień ALT obrazu
+- **Sprawdź logi:** Zapisane w `logs/alt-scan-log.txt`
+- **Cache:** Wyczyść cache WordPress i przeglądarki
+
+### Wysokie użycie API
+
+- Zmniejsz limit z 30 do 20 (linia ~78)
+- Zwiększ interwał z 5 do 10 minut (linia ~537)
+- Monitoruj usage na [platform.openai.com/usage](https://platform.openai.com/usage)
 
 ## 🤝 Wsparcie i Zgłaszanie Błędów
 
 - **Issues:** [GitHub Issues](https://github.com/kacperbaranowski/AltGenius/issues)
 - **Autor:** Kacper Baranowski
-- **Email:** [kontakt przez GitHub]
+- **GitHub:** [@kacperbaranowski](https://github.com/kacperbaranowski)
 
 ## 📝 Changelog
 
 ### v1.0.5 (2026-01-28)
 
-- ✨ Dodano panel statystyk i logów
-- ✨ Dodano cron job do automatycznego skanowania
-- ✨ Dodano system logowania do pliku
-- ✨ Dodano dedykowane menu top-level
+- ✨ Dodano panel statystyk KPI
+- ✨ Dodano cron co 5 minut (288×/dzień, ~8,640 zapytań/dzień)
+- ✨ Dodano **Gutenberg Sync** - dwukierunkowa synchronizacja ALT
+- ✨ Dostosowano do OpenAI Tier 1 (limit 30 obrazków/batch)
+- 🔧 Hardcoded GitHub repo: `kacperbaranowski/AltGenius`
+- 🔧 Uproszczono UI - tylko statystyki + status crona
 - 🐛 Naprawiono pobieranie obrazków bez ALT (SQL query)
-- 🔧 Usunięto opcje GitHub z UI (hardcoded)
+- 📝 Zmieniono nazwę z "AI ALT Generator by Hedea" na "AltGenius"
 
 ### v1.0.1
 
