@@ -1,0 +1,93 @@
+/* Strona statystyk ALT Generator */
+
+.altgpt-stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.altgpt-stats-cards .card {
+  padding: 20px;
+  background: #fff;
+  border-left: 4px solid #2271b1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.altgpt-stats-cards .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+.altgpt-stats-cards .card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.altgpt-stats-cards .card p {
+  font-size: 32px;
+  margin: 0;
+  font-weight: bold;
+  color: #23282d;
+}
+
+.altgpt-action-status {
+  display: inline-block;
+  margin-left: 10px;
+  font-weight: bold;
+  animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.altgpt-logs {
+  background: #f6f7f7;
+  padding: 15px;
+  margin-top: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.altgpt-logs::-webkit-scrollbar {
+  width: 8px;
+}
+
+.altgpt-logs::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.altgpt-logs::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.altgpt-logs::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+  .altgpt-stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .altgpt-stats-cards .card p {
+    font-size: 24px;
+  }
+}

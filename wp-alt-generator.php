@@ -45,6 +45,18 @@ class ALT_By_ChatGPT_One {
         add_action('wp_ajax_' . self::AJAX_ACTION, [ $this, 'ajax_generate_alt' ]);
         add_action('add_attachment', [ $this, 'maybe_fill_on_upload' ]);
         add_action('init', [ $this, 'init_github_updater' ]);
+        
+        // Nowe AJAX akcje dla statystyk
+        add_action('wp_ajax_altgpt_refresh_stats', [ $this, 'ajax_refresh_stats' ]);
+        add_action('wp_ajax_altgpt_refresh_logs', [ $this, 'ajax_refresh_logs' ]);
+        add_action('wp_ajax_altgpt_clear_logs', [ $this, 'ajax_clear_logs' ]);
+        add_action('wp_ajax_altgpt_scan_now', [ $this, 'ajax_scan_now' ]);
+        add_action('wp_ajax_altgpt_generate_all', [ $this, 'ajax_generate_all' ]);
+        
+        // Cron job
+        add_action('altgpt_cron_scan', [ $this, 'cron_scan_and_generate' ]);
+        register_activation_hook(__FILE__, [ $this, 'activate_cron' ]);
+        register_deactivation_hook(__FILE__, [ $this, 'deactivate_cron' ]);
     }
 
     private function default_prompt(){
@@ -65,7 +77,35 @@ class ALT_By_ChatGPT_One {
     }
 
     public function add_settings_page(){
-        add_options_page('ALT by ChatGPT','ALT by ChatGPT','manage_options','altgpt-one',[ $this, 'render_settings_page' ]);
+        add_menu_page(
+            'ALT Generator',           // page_title
+            'ALT Generator',           // menu_title
+            'manage_options',          // capability
+            'altgpt-one',              // menu_slug
+            [ $this, 'render_settings_page' ], // callback
+            'dashicons-images-alt2',   // icon
+            30                         // position
+        );
+        
+        // Submenu: Ustawienia
+        add_submenu_page(
+            'altgpt-one',              // parent_slug
+            'Ustawienia',              // page_title
+            'Ustawienia',              // menu_title
+            'manage_options',          // capability
+            'altgpt-one',              // menu_slug (same as parent for first submenu)
+            [ $this, 'render_settings_page' ] // callback
+        );
+        
+        // Submenu: Statystyki i Logi
+        add_submenu_page(
+            'altgpt-one',              // parent_slug
+            'Statystyki i Logi',       // page_title
+            'Statystyki i Logi',       // menu_title
+            'manage_options',          // capability
+            'altgpt-stats',            // menu_slug
+            [ $this, 'render_stats_page' ] // callback
+        );
     }
 
     public function register_settings(){
@@ -106,6 +146,104 @@ class ALT_By_ChatGPT_One {
         echo '</form></div>';
     }
 
+    public function render_stats_page(){
+        if(!current_user_can('manage_options')) return;
+        
+        $stats = $this->get_images_stats();
+        $missing_images = $this->get_images_without_alt(20);
+        $logs = $this->get_recent_logs(100);
+        
+        ?>
+        <div class="wrap">
+            <h1>Statystyki ALT i Logi</h1>
+            
+            <!-- Statystyki -->
+            <div class="altgpt-stats-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
+                <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #2271b1;">
+                    <h3 style="margin: 0 0 10px;">Wszystkie obrazy</h3>
+                    <p style="font-size: 32px; margin: 0; font-weight: bold;"><?php echo number_format($stats['total']); ?></p>
+                </div>
+                <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #00a32a;">
+                    <h3 style="margin: 0 0 10px;">Z ALT</h3>
+                    <p style="font-size: 32px; margin: 0; font-weight: bold;"><?php echo number_format($stats['with_alt']); ?></p>
+                </div>
+                <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #d63638;">
+                    <h3 style="margin: 0 0 10px;">Bez ALT</h3>
+                    <p style="font-size: 32px; margin: 0; font-weight: bold;"><?php echo number_format($stats['without_alt']); ?></p>
+                </div>
+                <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #007cba;">
+                    <h3 style="margin: 0 0 10px;">Pokrycie</h3>
+                    <p style="font-size: 32px; margin: 0; font-weight: bold;"><?php echo $stats['percentage']; ?>%</p>
+                </div>
+            </div>
+            
+            <!-- Przyciski akcji -->
+            <div style="margin: 20px 0;">
+                <button class="button button-primary altgpt-scan-now">🔍 Skanuj teraz</button>
+                <button class="button altgpt-generate-all" <?php echo $stats['without_alt'] == 0 ? 'disabled' : ''; ?>>
+                    ⚡ Generuj dla wszystkich bez ALT (<?php echo $stats['without_alt']; ?>)
+                </button>
+                <span class="altgpt-action-status" style="margin-left: 10px; font-weight: bold;"></span>
+            </div>
+            
+            <!-- Lista obrazków bez ALT -->
+            <?php if(!empty($missing_images)): ?>
+            <div class="card" style="background: #fff; padding: 20px; margin: 20px 0;">
+                <h2>Obrazki bez ALT (pierwsze 20)</h2>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Miniatura</th>
+                            <th>Nazwa pliku</th>
+                            <th>Data dodania</th>
+                            <th style="width: 150px;">Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($missing_images as $img): 
+                            $thumb = wp_get_attachment_image_src($img->ID, 'thumbnail');
+                        ?>
+                        <tr>
+                            <td>
+                                <?php if($thumb): ?>
+                                    <img src="<?php echo esc_url($thumb[0]); ?>" style="width: 60px; height: 60px; object-fit: cover;">
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <strong><?php echo esc_html(basename(get_attached_file($img->ID))); ?></strong><br>
+                                <small>ID: <?php echo $img->ID; ?></small>
+                            </td>
+                            <td><?php echo get_the_date('Y-m-d H:i', $img->ID); ?></td>
+                            <td>
+                                <a href="<?php echo admin_url('post.php?post='.$img->ID.'&action=edit'); ?>" class="button button-small">Edytuj</a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php else: ?>
+            <div class="notice notice-success"><p>🎉 Wszystkie obrazy mają ALT!</p></div>
+            <?php endif; ?>
+            
+            <!-- Logi -->
+            <div class="card" style="background: #fff; padding: 20px; margin: 20px 0;">
+                <h2>Ostatnie logi (100 wpisów)</h2>
+                <button class="button altgpt-clear-logs">🗑️ Wyczyść logi</button>
+                <button class="button altgpt-refresh-logs">🔄 Odśwież</button>
+                <div class="altgpt-logs" style="background: #f6f7f7; padding: 15px; margin-top: 10px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                    <?php if(!empty($logs)): ?>
+                        <?php echo nl2br(esc_html($logs)); ?>
+                    <?php else: ?>
+                        <em>Brak logów</em>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+
     public function add_alt_column($c){ $c['altgpt']=__('ALT (ChatGPT)'); return $c; }
     public function render_alt_column($col,$id){
         if($col!='altgpt') return;
@@ -116,9 +254,21 @@ class ALT_By_ChatGPT_One {
     }
 
     public function enqueue_admin_assets($hook){
-        if($hook!='upload.php')return;
-        wp_enqueue_script('altgpt',plugin_dir_url(__FILE__).'assets/altgpt.js',['jquery'],'1.0',true);
-        wp_localize_script('altgpt','ALTGPT',['ajax'=>admin_url('admin-ajax.php'),'action'=>self::AJAX_ACTION]);
+        // Dla strony Media (upload.php)
+        if($hook=='upload.php'){
+            wp_enqueue_script('altgpt',plugin_dir_url(__FILE__).'assets/altgpt.js',['jquery'],'1.0',true);
+            wp_localize_script('altgpt','ALTGPT',['ajax'=>admin_url('admin-ajax.php'),'action'=>self::AJAX_ACTION]);
+        }
+        
+        // Dla strony statystyk
+        if(strpos($hook, 'altgpt-stats') !== false){
+            wp_enqueue_script('altgpt-stats',plugin_dir_url(__FILE__).'assets/stats.js',['jquery'],'1.0',true);
+            wp_enqueue_style('altgpt-stats-css',plugin_dir_url(__FILE__).'assets/stats.css',[],'1.0');
+            wp_localize_script('altgpt-stats','ALTGPT_STATS',[
+                'ajax' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('altgpt-stats-nonce')
+            ]);
+        }
     }
 
     public function ajax_generate_alt(){
@@ -237,6 +387,217 @@ class ALT_By_ChatGPT_One {
         $o=$this->get_options(); if(empty($o['auto_on_upload']))return;
         if(!get_post_meta($id,'_wp_attachment_image_alt',true)) $this->generate_and_update_alt($id);
     }
+
+    // === STATYSTYKI I LOGI ===
+    
+    private function get_images_stats(){
+        global $wpdb;
+        
+        // Wszystkie obrazy
+        $total = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='attachment' AND post_mime_type LIKE 'image/%'");
+        
+        // Obrazy z alt
+        $with_alt = $wpdb->get_var("
+            SELECT COUNT(DISTINCT p.ID) 
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+            WHERE p.post_type='attachment' 
+            AND p.post_mime_type LIKE 'image/%'
+            AND pm.meta_key='_wp_attachment_image_alt'
+            AND pm.meta_value != ''
+        ");
+        
+        $without_alt = $total - $with_alt;
+        $percentage = $total > 0 ? round(($with_alt / $total) * 100, 1) : 0;
+        
+        return [
+            'total' => (int)$total,
+            'with_alt' => (int)$with_alt,
+            'without_alt' => (int)$without_alt,
+            'percentage' => $percentage
+        ];
+    }
+    
+    private function get_images_without_alt($limit = -1){
+        $args = [
+            'post_type' => 'attachment',
+            'post_mime_type' => 'image',
+            'post_status' => 'inherit',
+            'posts_per_page' => $limit,
+            'meta_query' => [
+                'relation' => 'OR',
+                [
+                    'key' => '_wp_attachment_image_alt',
+                    'compare' => 'NOT EXISTS'
+                ],
+                [
+                    'key' => '_wp_attachment_image_alt',
+                    'value' => '',
+                    'compare' => '='
+                ]
+            ]
+        ];
+        
+        $query = new WP_Query($args);
+        return $query->posts;
+    }
+    
+    private function get_log_file_path(){
+        return plugin_dir_path(__FILE__) . 'logs/alt-scan-log.txt';
+    }
+    
+    private function ensure_logs_directory(){
+        $logs_dir = plugin_dir_path(__FILE__) . 'logs';
+        if(!file_exists($logs_dir)){
+            mkdir($logs_dir, 0755, true);
+        }
+        
+        $htaccess = $logs_dir . '/.htaccess';
+        if(!file_exists($htaccess)){
+            file_put_contents($htaccess, "deny from all\n");
+        }
+    }
+    
+    private function log_to_file($message, $type = 'INFO'){
+        $this->ensure_logs_directory();
+        $log_file = $this->get_log_file_path();
+        $timestamp = current_time('Y-m-d H:i:s');
+        $log_entry = "[{$timestamp}] {$type} - {$message}\n";
+        file_put_contents($log_file, $log_entry, FILE_APPEND);
+    }
+    
+    private function get_recent_logs($lines = 100){
+        $log_file = $this->get_log_file_path();
+        if(!file_exists($log_file)) return '';
+        
+        $content = file_get_contents($log_file);
+        $all_lines = explode("\n", $content);
+        $all_lines = array_filter($all_lines); // usuń puste
+        $all_lines = array_reverse($all_lines); // odwróć (najnowsze pierwsze)
+        $recent = array_slice($all_lines, 0, $lines);
+        
+        return implode("\n", $recent);
+    }
+    
+    private function clear_logs(){
+        $log_file = $this->get_log_file_path();
+        if(file_exists($log_file)){
+            file_put_contents($log_file, '');
+        }
+        $this->log_to_file('Logi zostały wyczyszczone', 'INFO');
+    }
+
+    // === AJAX HANDLERS ===
+    
+    public function ajax_refresh_stats(){
+        check_ajax_referer('altgpt-stats-nonce', 'nonce');
+        $stats = $this->get_images_stats();
+        wp_send_json_success($stats);
+    }
+    
+    public function ajax_refresh_logs(){
+        check_ajax_referer('altgpt-stats-nonce', 'nonce');
+        $logs = $this->get_recent_logs(100);
+        wp_send_json_success(['logs' => $logs]);
+    }
+    
+    public function ajax_clear_logs(){
+        check_ajax_referer('altgpt-stats-nonce', 'nonce');
+        $this->clear_logs();
+        wp_send_json_success(['message' => 'Logi wyczyszczone']);
+    }
+    
+    public function ajax_scan_now(){
+        check_ajax_referer('altgpt-stats-nonce', 'nonce');
+        $this->log_to_file('Rozpoczęto manualne skanowanie', 'INFO');
+        $stats = $this->get_images_stats();
+        wp_send_json_success([
+            'message' => 'Skanowanie zakończone',
+            'stats' => $stats
+        ]);
+    }
+    
+    public function ajax_generate_all(){
+        check_ajax_referer('altgpt-stats-nonce', 'nonce');
+        
+        $limit = 10; // Generuj max 10 na jedno wywołanie AJAX
+        $images = $this->get_images_without_alt($limit);
+        
+        $ok = 0;
+        $err = 0;
+        
+        foreach($images as $img){
+            $this->log_to_file("Generowanie ALT dla ID {$img->ID}", 'INFO');
+            $result = $this->generate_and_update_alt($img->ID);
+            
+            if(is_wp_error($result)){
+                $err++;
+                $this->log_to_file("Błąd dla ID {$img->ID}: " . $result->get_error_message(), 'ERROR');
+            } else {
+                $ok++;
+                $this->log_to_file("Sukces dla ID {$img->ID}: {$result}", 'SUCCESS');
+            }
+        }
+        
+        $stats = $this->get_images_stats();
+        
+        wp_send_json_success([
+            'processed' => count($images),
+            'ok' => $ok,
+            'err' => $err,
+            'remaining' => $stats['without_alt'],
+            'stats' => $stats
+        ]);
+    }
+    
+    // === CRON ===
+    
+    public function activate_cron(){
+        if(!wp_next_scheduled('altgpt_cron_scan')){
+            wp_schedule_event(time(), 'daily', 'altgpt_cron_scan');
+        }
+        $this->log_to_file('Cron aktywowany', 'INFO');
+    }
+    
+    public function deactivate_cron(){
+        wp_clear_scheduled_hook('altgpt_cron_scan');
+        $this->log_to_file('Cron dezaktywowany', 'INFO');
+    }
+    
+    public function cron_scan_and_generate(){
+        $o = $this->get_options();
+        $limit = isset($o['scan_limit']) ? (int)$o['scan_limit'] : 50;
+        
+        $this->log_to_file("=== CRON START === Limit: {$limit}", 'INFO');
+        
+        $images = $this->get_images_without_alt($limit);
+        $count = count($images);
+        
+        if($count === 0){
+            $this->log_to_file("Brak obrazków bez ALT", 'INFO');
+            return;
+        }
+        
+        $this->log_to_file("Znaleziono {$count} obrazków bez ALT", 'INFO');
+        
+        $ok = 0;
+        $err = 0;
+        
+        foreach($images as $img){
+            $result = $this->generate_and_update_alt($img->ID);
+            
+            if(is_wp_error($result)){
+                $err++;
+                $this->log_to_file("ERROR ID {$img->ID}: " . $result->get_error_message(), 'ERROR');
+            } else {
+                $ok++;
+                $this->log_to_file("SUCCESS ID {$img->ID}", 'SUCCESS');
+            }
+        }
+        
+        $this->log_to_file("=== CRON END === OK: {$ok}, Błędy: {$err}", 'INFO');
+    }
+
 
     public function init_github_updater(){
         $repo = $this->get_github_repo();
