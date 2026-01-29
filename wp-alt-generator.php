@@ -3,7 +3,7 @@
  * Plugin Name: AltGenius
  * Plugin URI: https://github.com/kacperbaranowski/AltGenius
  * Description: Automatyczne generowanie tekstów ALT dla obrazów w Bibliotece Mediów z użyciem AI (ChatGPT). Obsługa akcji masowych, kontekstu wpisu/strony/produktu oraz pełne ustawienia (API key, model, prompt).
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Kacper Baranowski
  * Author URI: https://github.com/kacperbaranowski
  * License: GPL v2 or later
@@ -21,6 +21,12 @@ class ALT_By_ChatGPT_One {
     const NONCE_ACTION = 'altgpt_one_nonce';
     const AJAX_ACTION = 'altgpt_one_generate';
     const API_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+    
+    // Wspierane formaty obrazów dla różnych providerów AI
+    // OpenAI: https://platform.openai.com/docs/guides/vision
+    const OPENAI_SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+    // Gemini (placeholder dla przyszłości - może wspierać inne formaty)
+    // const GEMINI_SUPPORTED_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/svg+xml'];
 
     private $last_request_debug = null;
 
@@ -147,15 +153,42 @@ class ALT_By_ChatGPT_One {
         if(!current_user_can('manage_options')) return;
         
         $stats = $this->get_images_stats();
+        $o = $this->get_options();
+        $current_model = isset($o['model']) ? $o['model'] : 'gpt-4o-mini';
         
         // Sprawdź status crona
         $next_cron = wp_next_scheduled('altgpt_cron_scan');
         $cron_status = $next_cron ? 'Aktywny' : 'Nieaktywny';
         $cron_next = $next_cron ? date('Y-m-d H:i:s', $next_cron) : 'Brak';
         
+        // Wspierane formaty (dla OpenAI)
+        $supported_formats = array_map(function($m){
+            return str_replace('image/', '', $m);
+        }, self::OPENAI_SUPPORTED_FORMATS);
+        $supported_list = implode(', ', $supported_formats);
+        
         ?>
         <div class="wrap">
             <h1>AltGenius - Statystyki</h1>
+            
+            <!-- Model Info Alert -->
+            <?php if($stats['unsupported'] > 0): ?>
+                <div class="notice notice-warning" style="padding: 15px; margin: 20px 0; border-left: 4px solid #f0b849;">
+                    <h3 style="margin-top: 0;">⚠️ Ograniczenia Modelu AI</h3>
+                    <p><strong>Wybrany model:</strong> <?php echo esc_html($current_model); ?></p>
+                    <p><strong>Wspierane formaty:</strong> <code><?php echo esc_html($supported_list); ?></code></p>
+                    <p style="color: #d63638;"><strong>Uwaga:</strong> W Twojej bibliotece znajduje się <strong><?php echo number_format($stats['unsupported']); ?></strong> 
+                    <?php echo $stats['unsupported'] == 1 ? 'obraz' : 'obrazów'; ?> w nieobsługiwanych formatach (np. SVG), 
+                    które <strong>nie mogą być przetworzone</strong> przez OpenAI. Te obrazy będą pomijane podczas automatycznego generowania ALT.</p>
+                </div>
+            <?php else: ?>
+                <div class="notice notice-success" style="padding: 15px; margin: 20px 0; border-left: 4px solid #00a32a;">
+                    <h3 style="margin-top: 0;">✅ Wszystkie Obrazy Kompatybilne</h3>
+                    <p><strong>Wybrany model:</strong> <?php echo esc_html($current_model); ?></p>
+                    <p><strong>Wspierane formaty:</strong> <code><?php echo esc_html($supported_list); ?></code></p>
+                    <p>Wszystkie obrazy w Twojej bibliotece są w formatach wspieranych przez OpenAI. 👍</p>
+                </div>
+            <?php endif; ?>
             
             <!-- KPI Cards -->
             <div class="altgpt-stats-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
@@ -175,6 +208,13 @@ class ALT_By_ChatGPT_One {
                     <h3 style="margin: 0 0 10px;">Pokrycie</h3>
                     <p style="font-size: 32px; margin: 0; font-weight: bold;"><?php echo $stats['percentage']; ?>%</p>
                 </div>
+                <?php if($stats['unsupported'] > 0): ?>
+                <div class="card" style="padding: 20px; background: #fff; border-left: 4px solid #f0b849;">
+                    <h3 style="margin: 0 0 10px;">Nieobsługiwane</h3>
+                    <p style="font-size: 32px; margin: 0; font-weight: bold; color: #f0b849;"><?php echo number_format($stats['unsupported']); ?></p>
+                    <p style="font-size: 12px; color: #666; margin: 5px 0 0;">Formaty poza <?php echo esc_html($supported_list); ?></p>
+                </div>
+                <?php endif; ?>
             </div>
             
             <!-- Status Crona -->
@@ -257,6 +297,25 @@ class ALT_By_ChatGPT_One {
     $mime_type = get_post_mime_type($id);
     if(!$mime_type){
         $mime_type = 'image/jpeg';
+    }
+    
+    // Walidacja formatu obrazu - OpenAI wspiera tylko: png, jpeg, gif, webp
+    // SVG i inne formaty NIE SĄ wspierane!
+    if(!in_array($mime_type, self::OPENAI_SUPPORTED_FORMATS, true)){
+        $supported = implode(', ', array_map(function($m){
+            return str_replace('image/', '', $m);
+        }, self::OPENAI_SUPPORTED_FORMATS));
+        
+        $current_format = str_replace('image/', '', $mime_type);
+        
+        return new WP_Error(
+            'unsupported_format',
+            sprintf(
+                'Nieobsługiwany format obrazu: %s. OpenAI wspiera tylko: %s',
+                $current_format,
+                $supported
+            )
+        );
     }
     
     $base64 = base64_encode($image_data);
@@ -359,12 +418,35 @@ class ALT_By_ChatGPT_One {
         $without_alt = $total - $with_alt;
         $percentage = $total > 0 ? round(($with_alt / $total) * 100, 1) : 0;
         
+        // Obrazy w nieobsługiwanych formatach (dla OpenAI)
+        $unsupported = $this->count_unsupported_formats();
+        
         return [
             'total' => (int)$total,
             'with_alt' => (int)$with_alt,
             'without_alt' => (int)$without_alt,
-            'percentage' => $percentage
+            'percentage' => $percentage,
+            'unsupported' => (int)$unsupported
         ];
+    }
+    
+    private function count_unsupported_formats(){
+        global $wpdb;
+        
+        // Formaty wspierane przez OpenAI
+        $supported = self::OPENAI_SUPPORTED_FORMATS;
+        $placeholders = implode(',', array_fill(0, count($supported), '%s'));
+        
+        // Zlicz obrazy NIE w wspieranych formatach
+        $query = "
+            SELECT COUNT(*) 
+            FROM {$wpdb->posts} 
+            WHERE post_type='attachment' 
+            AND post_mime_type LIKE 'image/%'
+            AND post_mime_type NOT IN ($placeholders)
+        ";
+        
+        return $wpdb->get_var($wpdb->prepare($query, ...$supported));
     }
     
     private function get_images_without_alt($limit = -1){

@@ -1,6 +1,6 @@
 # AltGenius - AI-Powered ALT Text Generator for WordPress
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
 ![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-green.svg)
 ![License](https://img.shields.io/badge/license-GPL--2.0%2B-orange.svg)
 
@@ -38,7 +38,16 @@
   - Obrazy z ALT
   - Obrazy bez ALT
   - Procent pokrycia
+  - **Nieobsługiwane formaty** (SVG itp.) - pokazuje ile obrazów nie może być przetworzonych
 - **Status Crona:** Czy aktywny, kiedy następne uruchomienie
+- **Informacja o modelu:** Alert pokazujący wspierane formaty obrazów i ograniczenia wybranego modelu AI
+
+### 🛡️ Walidacja Formatów
+
+- **Wspierane formaty OpenAI:** PNG, JPEG, JPG, GIF, WEBP
+- **Automatyczna walidacja:** SVG i inne nieobsługiwane formaty są odrzucane przed wysłaniem do API
+- **Oszczędność:** Zapobiega błędom 400 i marnowaniu limitów API
+- **Przyszłość:** Struktura gotowa na dodanie innych providerów AI (np. Gemini) z innymi obsługiwanymi formatami
 
 ### ⚙️ Akcje Masowe
 
