@@ -12,9 +12,7 @@
 
 - **Generowanie z AI:** Wykorzystuje modele GPT (gpt-4o-mini, gpt-4.1, o3, o4-mini) do tworzenia dokładnych, kontekstowych opisów obrazów
 - **Vision API:** Bezpośrednia analiza obrazu (base64) zamiast URL
-- \*\*Kontekst tre
-
-ści:\*\* Automatyczne uwzględnianie kontekstu wpisu/strony/produktu
+- \*\*Kontekst treści:\*\* Automatyczne uwzględnianie kontekstu wpisu/strony/produktu
 
 ### ⚡ Automatyzacja (CRON)
 
